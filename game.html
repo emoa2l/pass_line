@@ -1012,6 +1012,7 @@ function roll(){
     if(excess>0) retire(excess); else S.sFromRack+=(-excess), S.fromRack+=(-excess);
   }
   DBG.check('after roll ' + S.rolls);
+  DBG.autosave();
   if(S.pendingShooterEnd){ S.pendingShooterEnd=false; endShooter(); }
   render();
   offerUsual();
@@ -1163,6 +1164,7 @@ $('reset').onclick=()=>{const keepStake=S.stake, keepRebet=S.rebet;
   working:{},oddsWorking:false,wins:[],rebet:keepRebet||'ask'};
   $('log').innerHTML='';$('call').textContent='';$('tot').textContent='—';renderShooters();offerUsual();
   $('rebar').hidden=true;$('rbRemember').checked=false;showStanding();
+  if(isDevBuild()) DBG.start();     // new session, new seed, new trace
   $('d1').innerHTML='';$('d2').innerHTML='';build();render();};
 document.addEventListener('keydown',e=>{if(e.key==='r'&&e.target===document.body){e.preventDefault();roll();}});
 
@@ -1780,6 +1782,7 @@ const DBG = {
   start(seed){
     if(!isDevBuild()) return;        // recorder is a development tool
     this.seed = seed || (Date.now() % 2147483647);
+    this.autosaveKey = 'craps.trace.' + this.seed;
     this.n = 0; this.events = []; this.moves = [];
     this.rng = this.mk(this.seed);
     this.on = true;
@@ -1821,6 +1824,10 @@ const DBG = {
       this.log('DRIFT', {where, attributed:a, felt:f, diff:a-f});
       logLine(`<b>DRIFT at ${where}</b> attributed $${a} vs felt $${f} (off $${a-f})`,'shooter');
     }
+  },
+  autosave(){
+    if(!this.on || !this.autosaveKey) return;
+    try{ localStorage.setItem(this.autosaveKey, this.dump()); }catch(e){}
   },
   dump(){
     return JSON.stringify({seed:this.seed, events:this.events, moves:this.moves,
@@ -2141,6 +2148,13 @@ function loadSessions(){
 function saveSessions(list){
   try{ localStorage.setItem('craps.sessions',JSON.stringify(list.slice(-60))); }
   catch(e){ flash('Could not save — browser storage is unavailable'); }
+  // Autosaved working traces are superseded once a session is saved properly.
+  try{
+    for(let i=localStorage.length-1;i>=0;i--){
+      const k=localStorage.key(i);
+      if(k && k.startsWith('craps.trace.') && k!==DBG.autosaveKey) localStorage.removeItem(k);
+    }
+  }catch(e){}
 }
 function saveSession(){
   if(!S.rolls){ flash('Nothing to save yet — roll the dice first'); return; }
@@ -2153,7 +2167,8 @@ function saveSession(){
     best:S.shooters.reduce((a,s)=>!a||s.net>a.net?s:a,null),
     worst:S.shooters.reduce((a,s)=>!a||s.net<a.net?s:a,null),
     shooterRows:S.shooters.map(s=>({no:s.no,rolls:s.rolls,points:s.points,net:s.net,rack:s.rack,press:s.press})),
-    log:S.history.map(h=>h.text.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim())
+    log:S.history.map(h=>h.text.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim()),
+    trace: DBG.on ? JSON.parse(DBG.dump()) : null
   };
   const all=loadSessions();
   const i=all.findIndex(s=>s.id===rec.id);
@@ -2187,7 +2202,13 @@ function renderSessions(){
             +`${r.net>=0?'+':'−'}$${Math.abs(r.net)} (rack $${r.rack||0}, press $${r.press||0})</div>`).join('')
         : '<div>No completed shooters.</div>';
       d.innerHTML=`<div><b>Shooters</b></div>${head}<div style="margin-top:6px"><b>Log</b></div>`
-        + s.log.map(l=>`<div>${l}</div>`).join('');
+        + s.log.map(l=>`<div>${l}</div>`).join('')
+        + (s.trace && isDevBuild()
+            ? `<button class="ghost sm" style="margin-top:7px" data-replay="${s.id}">Replay this session</button>` : '');
+      const rb=d.querySelector('[data-replay]');
+      if(rb) rb.onclick=ev=>{ ev.stopPropagation();
+        DBG.replay(JSON.stringify(s.trace));
+        flash(`Replaying ${s.id} — seed ${s.trace.seed}`); };
       node.appendChild(d);
     };
   });
@@ -2665,6 +2686,9 @@ document.getElementById('aiEnabled').checked=!S.aiOff;
 document.getElementById('usualNever').checked=S.promptOff;
 if(S.aiOff) setAI(false);
 build();drawDie($('d1'),3);drawDie($('d2'),4);render();renderSessions();offerUsual();
+// Every dev session is traced from the first roll: a reported bug should always
+// arrive with its replay, not a description of it.
+if(isDevBuild() && !DBG.on) DBG.start();
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 
