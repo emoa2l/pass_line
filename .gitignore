@@ -1,0 +1,17 @@
+# Never commit credentials or per-developer config
+.env
+.env.*
+*.key
+secrets.json
+
+# Capacitor / native build output
+node_modules/
+ios/
+android/
+dist/
+.DS_Store
+
+# Local scratch
+__pycache__/
+*.pyc
+results.json

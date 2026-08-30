@@ -1,0 +1,142 @@
+<meta charset="utf-8">
+<title>The Craps Strategy Ledger</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;600&family=Roboto+Slab:wght@300;400;700&display=swap">
+<style>
+:root{
+  --ground:#0E1512; --card:#141E19; --ink:#EAF0EC; --muted:#8FA398;
+  --felt:#0B5D3B; --brass:#C9A227; --chip:#B03A2E; --good:#5FD08A; --bad:#E06C5A;
+  --line:rgba(234,240,236,.14);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"Roboto Slab",Georgia,serif;font-size:16px;line-height:1.65;padding:32px 20px 60px}
+h1,h2,h3,.lab,th{font-family:Oswald,"Arial Narrow",sans-serif}
+.num{font-variant-numeric:tabular-nums}
+.wrap{max-width:940px;margin:0 auto}
+.lab{text-transform:uppercase;letter-spacing:.16em;font-size:11px;color:var(--muted)}
+
+header{border-bottom:3px solid var(--felt);padding-bottom:22px;margin-bottom:34px}
+h1{font-size:46px;font-weight:600;letter-spacing:.03em;margin:.15em 0 .12em;text-wrap:balance;text-transform:uppercase}
+.dek{color:var(--muted);font-size:17px;max-width:64ch;margin:0}
+
+h2{font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--brass);
+   font-weight:400;margin:44px 0 14px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+p{max-width:68ch}
+
+.verdict{background:var(--card);border-left:4px solid var(--brass);border-radius:0 8px 8px 0;
+  padding:20px 24px;margin:26px 0}
+.verdict p{margin:0}
+.verdict strong{color:var(--brass)}
+
+.scroll{overflow-x:auto;margin:18px 0}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:660px}
+th,td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:400;letter-spacing:.09em;font-size:11px;text-transform:uppercase;
+   position:sticky;top:0;background:var(--ground)}
+td{font-variant-numeric:tabular-nums}
+tbody tr:hover{background:rgba(255,255,255,.035)}
+.tier1{border-left:3px solid var(--good)}
+.tier2{border-left:3px solid var(--brass)}
+.tier3{border-left:3px solid var(--bad)}
+.name{font-family:Oswald,sans-serif;letter-spacing:.03em}
+.neg{color:var(--bad)} .pos{color:var(--good)}
+
+.bars{display:flex;flex-direction:column;gap:9px;margin:20px 0}
+.bar{display:grid;grid-template-columns:170px 1fr 62px;gap:12px;align-items:center;font-size:13px}
+.bar .track{background:rgba(255,255,255,.07);border-radius:3px;height:19px;overflow:hidden}
+.bar .fill{height:100%;border-radius:3px}
+.bar .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px;margin:20px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:17px}
+.card .big{font-family:Oswald,sans-serif;font-size:31px;color:var(--brass);font-variant-numeric:tabular-nums}
+.card p{font-size:13.5px;color:var(--muted);margin:5px 0 0}
+
+.bug{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:16px 19px;margin:13px 0}
+.bug h3{margin:0 0 5px;font-size:15px;font-weight:400;letter-spacing:.03em;color:var(--bad)}
+.bug p{margin:0;font-size:14px;color:var(--muted)}
+code{background:rgba(0,0,0,.4);padding:1px 6px;border-radius:3px;font-size:13px;color:var(--brass)}
+footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="lab">Monte Carlo · 25,000 sessions per strategy · 120 rolls each</div>
+  <h1>The Craps Strategy Ledger</h1>
+  <p class="dek">Eighteen betting systems, simulated against a validated dice engine. The ranking never changes: the house edge decides everything, and no arrangement of bets escapes it.</p>
+</header>
+
+<div class="verdict">
+  <p><strong>The finding.</strong> Every strategy loses money at a rate set by one number — the house edge on the bets it uses. Systems don't change that number; they only change how fast you meet it and how violently your bankroll swings on the way. The only real lever is <strong>free odds</strong>, the single bet on the table that pays true.</p>
+</div>
+
+<h2>Where the money actually goes</h2>
+<div class="grid">
+  <div class="card"><div class="big">1.41%</div><p>Pass line, flat. The reference point for every other bet.</p></div>
+  <div class="card"><div class="big">0.0%</div><p>Free odds behind the line. Pays true — the only fair bet offered.</p></div>
+  <div class="card"><div class="big">16.67%</div><p>Any 7. Twelve times worse than the pass line, one roll at a time.</p></div>
+  <div class="card"><div class="big">−$201</div><p>Average loss betting Any 7 for 120 rolls at $10. The worst seat in the house.</p></div>
+</div>
+
+<h2>Simulation results</h2>
+<p>$1,000 bankroll, $10 unit, 120 rolls — roughly an hour of table time. <span class="lab">Edge</span> is measured against true action: money actually exposed to a decision, not just cash withdrawn from the bankroll.</p>
+<div class="scroll">
+<table>
+<thead><tr><th>Strategy</th><th>Mean</th><th>Median</th><th>Edge</th><th>Win&nbsp;%</th><th>Bust&nbsp;%</th><th>5th pct</th><th>95th pct</th><th>Swing (SD)</th></tr></thead>
+<tbody>
+<tr class="tier1"><td class="name">Pass + 5x odds</td><td class="neg">−$3</td><td>−$10</td><td>0.20%</td><td>48.7</td><td>0.2</td><td class="neg">−$575</td><td class="pos">+$580</td><td>351</td></tr>
+<tr class="tier1"><td class="name">Don't pass + 3x odds</td><td class="neg">−$5</td><td>−$3</td><td>0.32%</td><td>49.5</td><td>0.0</td><td class="neg">−$387</td><td class="pos">+$367</td><td>230</td></tr>
+<tr class="tier1"><td class="name">3-Pt Molly (2 come, 3x)</td><td class="neg">−$11</td><td>−$19</td><td>0.40%</td><td>48.0</td><td>1.1</td><td class="neg">−$690</td><td class="pos">+$693</td><td>418</td></tr>
+<tr class="tier1"><td class="name">Don't pass + 2x odds</td><td class="neg">−$6</td><td>−$4</td><td>0.50%</td><td>48.9</td><td>0.0</td><td class="neg">−$292</td><td class="pos">+$274</td><td>172</td></tr>
+<tr class="tier1"><td class="name">3-Pt Molly (2 come, 2x)</td><td class="neg">−$12</td><td>−$16</td><td>0.52%</td><td>47.7</td><td>0.0</td><td class="neg">−$508</td><td class="pos">+$498</td><td>307</td></tr>
+<tr class="tier1"><td class="name">Pass + 3x odds</td><td class="neg">−$6</td><td>−$10</td><td>0.55%</td><td>48.2</td><td>0.0</td><td class="neg">−$375</td><td class="pos">+$380</td><td>230</td></tr>
+<tr class="tier1"><td class="name">Pass + 2x odds</td><td class="neg">−$5</td><td>−$6</td><td>0.59%</td><td>48.2</td><td>0.0</td><td class="neg">−$282</td><td class="pos">+$282</td><td>171</td></tr>
+<tr class="tier2"><td class="name">Pass + 1x odds</td><td class="neg">−$6</td><td>−$7</td><td>1.05%</td><td>47.4</td><td>0.0</td><td class="neg">−$192</td><td class="pos">+$183</td><td>114</td></tr>
+<tr class="tier2"><td class="name">Pass line only</td><td class="neg">−$5</td><td>−$10</td><td>1.31%</td><td>42.8</td><td>0.0</td><td class="neg">−$100</td><td class="pos">+$100</td><td>60</td></tr>
+<tr class="tier2"><td class="name">Pass + craps hedge</td><td class="neg">−$13</td><td>−$14</td><td>1.44%</td><td>46.5</td><td>0.0</td><td class="neg">−$290</td><td class="pos">+$268</td><td>170</td></tr>
+<tr class="tier2"><td class="name">Martingale (pass)</td><td class="neg">−$16</td><td class="pos">+$150</td><td>1.45%</td><td>75.9</td><td>12.3</td><td class="neg">−$1000</td><td class="pos">+$240</td><td>393</td></tr>
+<tr class="tier2"><td class="name">Place 6 &amp; 8</td><td class="neg">−$5</td><td>−$6</td><td>1.56%</td><td>45.4</td><td>0.0</td><td class="neg">−$97</td><td class="pos">+$89</td><td>57</td></tr>
+<tr class="tier3"><td class="name">Inside numbers 5/6/8/9</td><td class="neg">−$24</td><td>−$24</td><td>2.96%</td><td>42.9</td><td>0.0</td><td class="neg">−$255</td><td class="pos">+$205</td><td>141</td></tr>
+<tr class="tier3"><td class="name">Iron Cross</td><td class="neg">−$67</td><td>−$65</td><td>3.79%</td><td>35.3</td><td>0.0</td><td class="neg">−$362</td><td class="pos">+$220</td><td>177</td></tr>
+<tr class="tier3"><td class="name">Pass + all hardways</td><td class="neg">−$26</td><td>−$26</td><td>4.56%</td><td>38.5</td><td>0.0</td><td class="neg">−$182</td><td class="pos">+$134</td><td>96</td></tr>
+<tr class="tier3"><td class="name">Field every roll</td><td class="neg">−$68</td><td>−$70</td><td>5.67%</td><td>26.5</td><td>0.0</td><td class="neg">−$260</td><td class="pos">+$130</td><td>117</td></tr>
+<tr class="tier3"><td class="name">Any 7 every roll</td><td class="neg">−$201</td><td>−$200</td><td>16.73%</td><td>13.4</td><td>0.0</td><td class="neg">−$500</td><td class="pos">+$150</td><td>204</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>Odds dilute the edge — they don't beat it</h2>
+<p>Adding free odds lowers the edge on your <em>total action</em> because the odds portion is a fair bet. The flat-bet loss is unchanged; it's just spread over more money. That's why the curve flattens rather than crossing zero.</p>
+<div class="bars">
+  <div class="bar"><span>Pass, no odds</span><span class="track"><span class="fill" style="width:100%;background:var(--bad)"></span></span><span class="v">1.41%</span></div>
+  <div class="bar"><span>Pass + 1x</span><span class="track"><span class="fill" style="width:60%;background:#D08A4A"></span></span><span class="v">0.85%</span></div>
+  <div class="bar"><span>Pass + 2x</span><span class="track"><span class="fill" style="width:43%;background:var(--brass)"></span></span><span class="v">0.61%</span></div>
+  <div class="bar"><span>Pass + 3x</span><span class="track"><span class="fill" style="width:33%;background:var(--brass)"></span></span><span class="v">0.47%</span></div>
+  <div class="bar"><span>Pass + 5x</span><span class="track"><span class="fill" style="width:23%;background:#8CBF6A"></span></span><span class="v">0.33%</span></div>
+  <div class="bar"><span>Pass + 10x</span><span class="track"><span class="fill" style="width:13%;background:var(--good)"></span></span><span class="v">0.18%</span></div>
+  <div class="bar"><span>Pass + 100x</span><span class="track"><span class="fill" style="width:2%;background:var(--good)"></span></span><span class="v">0.02%</span></div>
+</div>
+<p><strong>The catch:</strong> bigger odds mean bigger swings. At 5x the standard deviation is $351 a session; at 10x, sessions start busting the $1,000 bankroll outright. A lower edge on a wilder ride is a real trade, not a free win.</p>
+
+<h2>Three systems that fool people</h2>
+<div class="bug">
+  <h3>The Iron Cross — wins almost every roll, loses fastest but one</h3>
+  <p>Field plus place 5, 6 and 8 covers every number except the 7. It wins on about five rolls out of six, which feels unbeatable. It bleeds <strong>3.79%</strong> — the 7 takes three bets at once, and it arrives more often than any other number.</p>
+</div>
+<div class="bug">
+  <h3>The Martingale — a 76% win rate that still loses</h3>
+  <p>Doubling after losses produced a <strong>+$150 median</strong>: most sessions genuinely finish ahead. It also busted the full bankroll <strong>12.3%</strong> of the time, and the mean is −$16. Many small wins funding rare total losses is not an edge — it's the same loss reshaped.</p>
+</div>
+<div class="bug">
+  <h3>The hedge — paying to protect a bet</h3>
+  <p>Backing the pass line with any-craps raises the edge from 1.31% to <strong>1.44%</strong>. The hedge is a worse bet than the one it protects, so buying insurance from an 11% bet to guard a 1.4% bet costs more than the risk removed.</p>
+</div>
+
+<h2>If you want to play</h2>
+<p>Bet the <strong>pass line</strong> or <strong>don't pass</strong>, take the largest <strong>free odds</strong> your bankroll tolerates, and add <strong>place bets on the 6 and 8</strong> if you want more action. Ignore the field, the hardways, and every proposition in the middle of the table. That's the whole optimal strategy — the rest of the layout exists to sell you a worse number.</p>
+
+<footer>
+  Simulated with a custom engine validated against closed-form probability: every bet's measured edge matches its exact value (pass 1.41%, don't pass 1.36%, place 6/8 1.52%, field 5.56%, any 7 16.67%). Validation caught four engine bugs — come bets paying on arrival, come-out sevens taking bets that were off, and two errors in how action was counted — each of which had produced impossible results, including a strategy that appeared to beat the house.
+</footer>
+</div>

@@ -1,0 +1,15 @@
+{
+  "name": "Pass Line — Craps Trainer",
+  "short_name": "Pass Line",
+  "description": "A play-money craps table that shows the house edge on every bet and tracks what each shooter costs you.",
+  "start_url": "./game.html",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#052A1B",
+  "theme_color": "#0B5D3B",
+  "categories": ["games", "education"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
