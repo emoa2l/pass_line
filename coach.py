@@ -44,10 +44,10 @@ MONEY panel
   the most points a single shooter made.
 
 BY SHOOTER panel
-- From your rack: YOUR OWN money committed on this shooter. It rises when you bet
-  from the bankroll. It falls when you take a bet down before it is decided (you
-  never risked it), and when a standing bet pays you more than its stake -- at
-  that point your stake is recovered and what is still riding is house money.
+- From your rack: fresh money out of the rack this shooter, net of the player's own
+  returned stakes that are back in the bank un-re-bet. Profits never reduce it --
+  they were never rack money. A returned stake counts again only if re-bet and lost. At a shooter's end it
+  is what that shooter actually cost in the player's own money.
 - "$X still on the felt": how much of that is currently exposed rather than settled.
 - Winnings riding: money on the felt funded by this shooter's PROFITS. A returned
   stake re-bet is the player's own money and shows under their exposure instead --

@@ -112,13 +112,19 @@ h1,h2,h3,.lab,button{font-family:Oswald,"Arial Narrow",sans-serif}
 @keyframes flash{0%,100%{background:rgba(0,0,0,.14)}30%{background:rgba(95,208,138,.5)}}
 @media(prefers-reduced-motion:reduce){.bet.hit{animation:none}}
 .chip{
-  position:absolute;top:-9px;right:-9px;min-width:27px;height:27px;padding:0 5px;
-  background:var(--chip);border:2px dashed rgba(255,255,255,.75);border-radius:50%;
-  font-family:Oswald,sans-serif;font-size:11px;display:grid;place-items:center;
-  box-shadow:0 2px 7px rgba(0,0,0,.55); font-variant-numeric:tabular-nums;
+  --c:var(--chip);
+  position:absolute;top:-9px;right:-9px;min-width:28px;height:28px;padding:0 4px;
+  border-radius:50%;color:#fff;
+  background:
+    radial-gradient(circle at 50% 46%, var(--c) 0 60%, transparent 61%),
+    repeating-conic-gradient(#f2ede3 0 16deg, var(--c) 16deg 52deg);
+  font-family:Oswald,sans-serif;font-size:11px;font-weight:600;
+  display:grid;place-items:center;text-shadow:0 1px 2px rgba(0,0,0,.5);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.55);
+  font-variant-numeric:tabular-nums;
 }
-.chip.odds{background:#1F6FB2;top:auto;bottom:-9px;right:auto;left:-9px}
-.chip.dc{background:#6B4C9A;top:auto;bottom:-9px;right:-9px;left:auto}
+.chip.odds{--c:#1F6FB2;top:auto;bottom:-9px;right:auto;left:-9px}
+.chip.dc{--c:#6B4C9A;top:auto;bottom:-9px;right:-9px;left:auto}
 .off{position:absolute;top:3px;left:5px;font-family:Oswald,sans-serif;font-size:9px;
   letter-spacing:.1em;color:var(--muted);border:1px solid var(--line);padding:0 3px;border-radius:3px}
 
@@ -133,10 +139,26 @@ button.ghost{background:transparent;color:var(--bone);border:2px solid var(--lin
 button.ghost:hover{border-color:var(--brass);filter:none}
 button:disabled{opacity:.4;cursor:not-allowed;filter:none}
 .units{display:flex;gap:5px}
-.u{width:38px;height:38px;border-radius:50%;border:2px dashed rgba(255,255,255,.5);
-   background:#7a2a20;color:#fff;font-family:Oswald,sans-serif;font-size:12px;cursor:pointer;
-   display:grid;place-items:center;font-variant-numeric:tabular-nums}
-.u[aria-pressed="true"]{background:var(--brass);color:#1a1200;border-style:solid;border-color:#fff}
+/* Real chips: edge spots from a repeating conic ring, a solid centre disc, and
+   the casino's denomination colours. */
+.u{--c:#7a2a20;--edge:#f2ede3;--ink:#fff;
+  width:46px;height:46px;flex:none;border-radius:50%;border:none;cursor:pointer;
+  position:relative;padding:0;display:grid;place-items:center;
+  background:
+    radial-gradient(circle at 50% 44%, color-mix(in srgb, var(--c) 88%, white) 0 30%, var(--c) 31% 62%, transparent 63%),
+    repeating-conic-gradient(var(--edge) 0 14deg, var(--c) 14deg 45deg);
+  box-shadow: inset 0 0 0 1.5px rgba(0,0,0,.35), 0 2px 5px rgba(0,0,0,.55);
+  color:var(--ink);font-family:Oswald,sans-serif;font-size:13px;font-weight:600;
+  font-variant-numeric:tabular-nums;transition:transform .12s ease}
+.u span{position:relative;text-shadow:0 1px 2px rgba(0,0,0,.4)}
+.u-1{--c:#d8d2c2;--ink:#2b2417}
+.u-1 span{text-shadow:none}
+.u-5{--c:#b03a2e}
+.u-25{--c:#1c7a43}
+.u-100{--c:#23272b}
+.u:hover{transform:translateY(-2px)}
+.u[aria-pressed="true"]{transform:translateY(-3px) scale(1.06);
+  box-shadow: inset 0 0 0 1.5px rgba(0,0,0,.35), 0 0 0 3px var(--brass), 0 4px 9px rgba(0,0,0,.6)}
 
 /* ---- rail ---- */
 .rail{display:flex;flex-direction:column;gap:14px}
@@ -807,7 +829,8 @@ function build(){
   R.appendChild(mk('craps','Any craps','7:1 · 11.1%'));
   R.appendChild(mk('yo','Yo 11','15:1 · 11.1%'));
   const U=$('units');U.innerHTML='';
-  [1,5,25,100].forEach(v=>{const b=document.createElement('button');b.className='u';b.textContent=v;
+  [1,5,25,100].forEach(v=>{const b=document.createElement('button');b.className='u u-'+v;
+    b.innerHTML='<span>'+v+'</span>';
     b.setAttribute('aria-pressed',v===S.unit);b.onclick=()=>{S.unit=v;build();render();};U.appendChild(b);});
 }
 function mk(id,title,sub){
@@ -954,7 +977,7 @@ function roll(){
     else if(n===H&&hard){retire(a, true);win(a+a*HARD_PAY[H]);notes.push(`HARD ${H} +$${a*HARD_PAY[H]}`);b.hard[h]=0;}}
 
   // established come bets resolve BEFORE a new come bet travels
-  if(n===7){for(const p in b.come){notes.push(`come ${p} −$${b.come[p]}`);}b.come={};}
+  if(n===7){for(const p in b.come){retire(b.come[p]);notes.push(`come ${p} −$${b.come[p]}`);}b.come={};}
   else if(PLACE_PAY[n]&&b.come[n]){const a=b.come[n];retire(a, true);win(a*2);notes.push(`come ${n} +$${a}`);
     S.wins.push({label:`come ${n}`,kind:'come',amount:a,profit:a}); delete b.come[n];}
   // established don't-come bets resolve first (same ordering rule as come)
@@ -2000,6 +2023,12 @@ function applyBets(bets){
 // ---- Come-out prompt ----------------------------------------------------
 function offerUsual(){
   const bar=$('usualBar'); if(!bar) return;
+  // When the AI observer is doing the pattern-reading, the local rule engine
+  // stays quiet -- two voices offering bets is noise, and the model already
+  // sees the same history the rules were approximating.
+  if(DealerCfg.d.aiPatterns && DealerCfg.d.speak && Pro.owned && AI.ready() && aiAllowed()){
+    bar.hidden=true; return;
+  }
   if(S.promptOff || S.point || risk()>0){ bar.hidden=true; return; }
   const p=usualBet(); if(!p){ bar.hidden=true; return; }
   const cost=p.bets.reduce((s,b)=>s+b.amount,0);
@@ -2301,12 +2330,20 @@ function renderSessions(){
 // EQUITY (bankroll + money on the felt) across their whole turn, so a bet still
 // standing when they seven out is counted correctly.
 function equity(){ return S.bank + risk(); }
+// Fresh money out of the rack, net of this shooter's returns that are sitting in
+// the bank un-re-bet. Cash handed back and not yet wagered again is simply back
+// in the rack -- it stops counting the moment it lands (#22).
+function rackNet(){
+  // Only unspent returned STAKES offset the outflow -- they are your own money
+  // back home. Profits never were rack money, so they never reduce it.
+  return Math.max(0, S.sOutRack - S.poolStake);
+}
 function endShooter(){
   const eq=equity();
   const rec={
     no:S.shooterNo, rolls:S.shooterRolls, points:S.shooterPoints,
     net: eq - S.shooterStartEq, endEquity: eq,
-    rack:S.sOutRack, exposed:S.sFromRack, press:S.sFromPress
+    rack:rackNet(), exposed:S.sFromRack, press:S.sFromPress
   };
   S.shooters.push(rec);
   logLine(`Shooter ${rec.no} sevened out after ${rec.rolls} roll${rec.rolls===1?'':'s'}, `
@@ -2319,7 +2356,7 @@ function endShooter(){
 }
 function renderShooters(){
   const rk=$('spRack'), pr=$('spPress');
-  if(rk) rk.textContent='$'+S.sOutRack;                     // total put out this shooter
+  if(rk) rk.textContent='$'+rackNet();     // fresh outflow net of unspent returns
   const ex=$('spExposed');
   if(ex) ex.textContent=`$${S.sFromRack} still on the felt`;
   if(pr) pr.textContent='$'+S.sFromPress;
@@ -2341,7 +2378,7 @@ function renderShooters(){
   const rows=[...S.shooters].reverse().slice(0,12);
   const curNet=equity()-S.shooterStartEq;
   const cur=`<tr class="cur"><td>#${S.shooterNo} (now)</td><td class="num">${S.shooterRolls}</td>`
-    +`<td class="num rack" title="$${S.sFromRack} still on the felt">$${S.sOutRack}</td><td class="num prs">$${S.sFromPress}</td>`
+    +`<td class="num rack" title="$${S.sFromRack} still on the felt">$${rackNet()}</td><td class="num prs">$${S.sFromPress}</td>`
     +`<td class="num ${curNet>0?'up':curNet<0?'down':''}">${curNet>=0?'+':'−'}$${Math.abs(curNet)}</td></tr>`;
   el.innerHTML='<tr><th>Shooter</th><th>Rolls</th><th>Rack</th><th>Press</th><th>P&amp;L</th></tr>'+cur
     + rows.map(r=>`<tr><td>#${r.no}</td><td class="num">${r.rolls}</td>`
