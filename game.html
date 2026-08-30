@@ -199,6 +199,7 @@ td{font-variant-numeric:tabular-nums}
   font-family:Oswald,sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.08em;
   padding:1px 5px;border-radius:3px;line-height:1.5;white-space:nowrap}
 .onmark{background:rgba(95,208,138,.22);color:var(--win);border:1px solid rgba(95,208,138,.5)}
+.mark.armed{opacity:.55}
 .offmark{background:rgba(0,0,0,.45);color:var(--muted);border:1px solid var(--line)}
 .bet.sleeping{opacity:.62}
 .bet.sleeping .chip{filter:grayscale(.75) brightness(.8)}
@@ -842,9 +843,12 @@ function mk(id,title,sub){
   if(id.startsWith('place')){
     const num=id.slice(5);
     const toggle=e=>{e.preventDefault();
-      if(!S.bets.place[num]){flash('Put a bet on the '+num+' first, then set it working or off');return;}
+      // The toggle is an INTENT and always sticks -- refusing it while no bet is
+      // up left later bets silently off (issue #26: paid nothing on the open).
       S.working[num]=!S.working[num];
-      flash(`Place ${num} is now ${S.working[num]||S.point?'WORKING':'OFF'}`);render();};
+      flash(`The ${num} is ${S.working[num]?'WORKING on the come-out':'off on the come-out'}`
+        + (S.bets.place[num]?'':' — it will apply when you bet it'));
+      render();};
     d.oncontextmenu=toggle;
     let lp; d.addEventListener('touchstart',e=>{lp=setTimeout(()=>toggle(e),450)},{passive:true});
     ['touchend','touchmove','touchcancel'].forEach(ev=>d.addEventListener(ev,()=>clearTimeout(lp)));
@@ -1172,8 +1176,16 @@ function render(){
     $('b_dc').classList.add('dead');}
   // Every place bet says plainly whether it can win or lose on the next roll.
   [4,5,6,8,9,10].forEach(n=>{
-    if(!b.place[n])return;
     const e=$('b_place'+n); if(!e)return;
+    if(!b.place[n]){
+      // No chips down, but the number is armed to work: show the intent faintly.
+      if(S.working[n] && !S.point){
+        const m=document.createElement('div');
+        m.className='mark onmark armed'; m.textContent='WORKING';
+        e.appendChild(m);
+      }
+      return;
+    }
     const on=!!S.point||!!S.working[n];
     const m=document.createElement('div');
     m.className='mark '+(on?'onmark':'offmark');
