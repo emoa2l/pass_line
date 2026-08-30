@@ -1493,7 +1493,7 @@ const Pro = {
   // RevenueCat public SDK keys (safe to ship in the client; they are not secrets).
   // Filled in when the RevenueCat app is created -- issue #2. Empty keys skip
   // configuration and the build behaves as not-purchased.
-  RC_KEYS: { ios:'', android:'' },
+  RC_KEYS: { ios:'appl_OFATVYfJWxqwkLMXKmyFMMtlnOA', android:'' },
   async configure(){
     if(!this.native()) return;
     const plat = window.Capacitor.getPlatform ? window.Capacitor.getPlatform() : '';
@@ -1502,6 +1502,9 @@ const Pro = {
     try{ await window.Capacitor.Plugins.Purchases.configure({apiKey:key}); }catch(e){}
   },
   owned: false,
+  // The dashboard entitlement is "passline.advanced" (display name "advanced").
+  // Accept both identifiers so a rename never locks a paying customer out.
+  _has(ents){ const a=(ents&&ents.active)||{}; return !!(a.advanced||a['passline.advanced']); },
   native(){ return !!(window.Capacitor && window.Capacitor.Plugins
                    && window.Capacitor.Plugins.Purchases); },
   async load(){
@@ -1510,8 +1513,7 @@ const Pro = {
     try{
       const {Purchases}=window.Capacitor.Plugins;
       const info=await Purchases.getCustomerInfo();
-      const live = !!(info && info.entitlements && info.entitlements.active
-                   && info.entitlements.active.advanced);
+      const live = this._has(info && info.entitlements);
       // Never revoke a paid unlock because the store was slow, offline, or
       // returned stale data. Only a successful "no entitlement" from a store we
       // actually reached could downgrade, and that is not worth the risk of
@@ -1529,7 +1531,7 @@ const Pro = {
     const pkg=offerings?.current?.availablePackages?.[0];
     if(!pkg) throw new Error('Store did not return the product');
     const res=await Purchases.purchasePackage({aPackage:pkg});
-    this.owned = !!res?.customerInfo?.entitlements?.active?.advanced;
+    this.owned = this._has(res?.customerInfo?.entitlements);
     if(this.owned) await SecureStore.set('craps.pro','1');
     return this.owned;
   },
@@ -1537,7 +1539,7 @@ const Pro = {
     if(!this.native()) return true;
     const {Purchases}=window.Capacitor.Plugins;
     const info=await Purchases.restorePurchases();
-    this.owned = !!info?.entitlements?.active?.advanced;
+    this.owned = this._has(info?.entitlements);
     if(this.owned) await SecureStore.set('craps.pro','1');
     return this.owned;
   }
