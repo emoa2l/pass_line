@@ -231,6 +231,11 @@ button.sm{padding:6px 12px;font-size:11px}
   padding:0;margin:0;color:var(--muted);font-family:Oswald,sans-serif;font-size:14px;
   letter-spacing:.13em;text-transform:uppercase;font-weight:400;cursor:pointer;text-align:left}
 .chbtn:hover{color:var(--bone);filter:none}
+.card h2.ch{display:flex;align-items:center;gap:8px}
+.grip{cursor:grab;color:var(--muted);font-size:13px;line-height:1;
+  touch-action:none;user-select:none;padding:2px 3px;flex:none}
+.grip:hover{color:var(--brass)}
+.card.dragging{opacity:.75;outline:2px dashed var(--brass);outline-offset:2px}
 .chbtn:focus-visible{outline:2px solid var(--brass);outline-offset:3px}
 .caret{margin-left:auto;width:8px;height:8px;border-right:2px solid currentColor;
   border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .18s ease;
@@ -2777,6 +2782,61 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
   $('prefsClose').onclick=()=>{ $('prefs').hidden=true; };
   document.addEventListener('keydown',e=>{
     if(e.key==='Escape' && !$('prefs').hidden) $('prefs').hidden=true; });
+})();
+
+
+// ---- Reorderable rail --------------------------------------------------
+// The player decides what sits on top. Pointer events cover mouse and touch
+// with one code path; the order persists on the device.
+(function(){
+  const rail=document.querySelector('.rail'); if(!rail) return;
+  const KEY='craps.cardorder';
+
+  // restore saved order
+  try{
+    const want=JSON.parse(localStorage.getItem(KEY)||'null');
+    if(Array.isArray(want)) want.forEach(k=>{
+      const c=rail.querySelector(`[data-card="${k}"]`); if(c) rail.appendChild(c);
+    });
+  }catch(e){}
+
+  const save=()=>{ try{ localStorage.setItem(KEY,
+    JSON.stringify([...rail.querySelectorAll('[data-card]')].map(c=>c.dataset.card))); }catch(e){} };
+
+  rail.querySelectorAll('[data-card]').forEach(card=>{
+    const head=card.querySelector('.ch'); if(!head) return;
+    const grip=document.createElement('span');
+    grip.className='grip'; grip.textContent='⠿';
+    grip.title='Drag to reorder'; grip.setAttribute('aria-label','Drag to reorder');
+    head.prepend(grip);
+
+    grip.addEventListener('pointerdown', e=>{
+      e.preventDefault();
+      grip.setPointerCapture(e.pointerId);
+      card.classList.add('dragging');
+      const move=ev=>{
+        const y=ev.clientY;
+        for(const other of rail.querySelectorAll('[data-card]:not(.dragging)')){
+          const r=other.getBoundingClientRect();
+          if(y>r.top && y<r.bottom){
+            const before = y < r.top + r.height/2;
+            rail.insertBefore(card, before ? other : other.nextSibling);
+            break;
+          }
+        }
+      };
+      const up=()=>{
+        card.classList.remove('dragging');
+        grip.removeEventListener('pointermove',move);
+        grip.removeEventListener('pointerup',up);
+        grip.removeEventListener('pointercancel',up);
+        save();
+      };
+      grip.addEventListener('pointermove',move);
+      grip.addEventListener('pointerup',up);
+      grip.addEventListener('pointercancel',up);
+    });
+  });
 })();
 
 // ---- Collapsible rail cards (choice remembered per card) ----
