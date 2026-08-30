@@ -4,11 +4,16 @@
 *.key
 secrets.json
 
-# Capacitor / native build output
+# Generated / dependencies
 node_modules/
-ios/
-android/
 dist/
+# Native build products (the projects themselves ARE committed)
+ios/App/Pods/
+ios/App/build/
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
 .DS_Store
 
 # Local scratch

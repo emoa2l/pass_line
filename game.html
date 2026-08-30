@@ -1435,6 +1435,17 @@ const PROVIDERS = {
 // features are simply available -- there is nothing to sell there.
 const Pro = {
   PRODUCT_ID: 'passline.advanced',
+  // RevenueCat public SDK keys (safe to ship in the client; they are not secrets).
+  // Filled in when the RevenueCat app is created -- issue #2. Empty keys skip
+  // configuration and the build behaves as not-purchased.
+  RC_KEYS: { ios:'', android:'' },
+  async configure(){
+    if(!this.native()) return;
+    const plat = window.Capacitor.getPlatform ? window.Capacitor.getPlatform() : '';
+    const key = this.RC_KEYS[plat] || '';
+    if(!key) return;
+    try{ await window.Capacitor.Plugins.Purchases.configure({apiKey:key}); }catch(e){}
+  },
   owned: false,
   native(){ return !!(window.Capacitor && window.Capacitor.Plugins
                    && window.Capacitor.Plugins.Purchases); },
@@ -1538,7 +1549,7 @@ const AI = {
   }
 };
 // One shared init: every panel awaits this rather than racing its own load.
-const AI_READY = (async () => { await Pro.load(); await AI.load(); await Consent.load(); await DealerCfg.load(); })();
+const AI_READY = (async () => { await Pro.configure(); await Pro.load(); await AI.load(); await Consent.load(); await DealerCfg.load(); })();
 
 
 
