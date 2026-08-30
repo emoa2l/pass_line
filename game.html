@@ -622,7 +622,7 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
         <tr><td>Place 6 / 8</td><td class="edge">1.52%</td></tr>
         <tr><td>Place 5 / 9</td><td class="edge">4.00%</td></tr>
         <tr><td>Place 4 / 10</td><td class="edge">6.67%</td></tr>
-        <tr><td>Field</td><td class="edge">5.56%</td></tr>
+        <tr><td>Field</td><td class="edge" id="edgeField">5.56%</td></tr>
         <tr><td>Hardways</td><td class="edge">9–11%</td></tr>
         <tr><td>Any 7</td><td class="edge">16.67%</td></tr>
       </table>
@@ -777,7 +777,7 @@ let S={bank:500,start:500,unit:5,point:null,rolls:0,souts:0,run:0,best:0,
   stake:0,stakeLeft:0,              // optional per-shooter stake limit
 
   bets:{pass:0,passOdds:0,dont:0,dontOdds:0,place:{},field:0,hard:{},prop:{},come:{},comeNew:0,dc:{},dcNew:0},
-  working:{},oddsWorking:false,wins:[],rebet:'ask'};
+  working:{},oddsWorking:false,wins:[],rebet:'ask',field12:2};
 
 const $=id=>document.getElementById(id);
 const pay=(a,r)=>Math.floor(a*r[0]/r[1]);
@@ -797,7 +797,9 @@ function build(){
   L.appendChild(mk('come','Come','1.41%'));
   L.appendChild(mk('dc',"Don't come",'1.36%'));
   const F=$('fieldRow');F.innerHTML='';
-  F.appendChild(mk('field','Field  2 3 4 9 10 11 12','2 and 12 pay double · 5.56%'));
+  const f12=S.field12||2;
+  F.appendChild(mk('field','Field  2 3 4 9 10 11 12',
+    f12===3 ? '2 pays double, 12 triple · 2.78%' : '2 and 12 pay double · 5.56%'));
   const H=$('hardRow');H.innerHTML='';
   [4,6,8,10].forEach(n=>H.appendChild(mk('hard'+n,'Hard '+n,`pays ${HARD_PAY[n]}:1`)));
   const R=$('propRow');R.innerHTML='';
@@ -896,7 +898,29 @@ function drawDie(el,v){el.innerHTML='';PIPS[v].forEach(([x,y])=>{const p=documen
 function roll(){
   DBG.log('roll', {});
   const d1=1+Math.floor(Math.random()*6),d2=1+Math.floor(Math.random()*6),n=d1+d2;
-  drawDie($('d1'),d1);drawDie($('d2'),d2);$('tot').textContent=n;
+  // At the slow pace the dice visibly tumble before settling. Money resolves
+  // immediately -- only the faces are theatre. (#20)
+  const pace=+($('speed')||{value:520}).value;
+  const still=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(pace>=900 && !still){
+    clearInterval(roll._tumble);
+    let t=0;
+    // The scramble must NOT draw from Math.random: in a dev build that is the
+    // seeded game RNG, and the animation would eat the dice stream and break
+    // trace replay. Visual noise gets its own scratch generator.
+    let vs=(Date.now()^0x9e3779b9)>>>0;
+    const vr=()=>{vs=(vs*1664525+1013904223)>>>0;return 1+(vs%6);};
+    roll._tumble=setInterval(()=>{
+      drawDie($('d1'),vr());
+      drawDie($('d2'),vr());
+      if((t+=80)>=720){clearInterval(roll._tumble);
+        drawDie($('d1'),d1);drawDie($('d2'),d2);}
+    },80);
+    $('tot').textContent='…';
+    setTimeout(()=>{$('tot').textContent=n;},760);
+  } else {
+    drawDie($('d1'),d1);drawDie($('d2'),d2);$('tot').textContent=n;
+  }
   [$('d1'),$('d2')].forEach(d=>{d.classList.remove('roll');void d.offsetWidth;d.classList.add('roll');});
   S.rolls++; S.shooterRolls++; Reader.note(d1+d2); const b=S.bets, hard=(d1===d2); const was=S.point; let notes=[],won=0;
   S.wins=[];   // {label, kind, amount(stake), profit} for bets that came down winning
@@ -913,7 +937,8 @@ function roll(){
     const fw=[2,3,4,9,10,11,12].includes(n);
     retire(a, fw);                   // one-roll bet: winners hand the stake back
     if([3,4,9,10,11].includes(n)){win(a*2);notes.push(`field +$${a}`);}
-    else if(n===2||n===12){win(a*3);notes.push(`field pays double +$${a*2}`);}
+    else if(n===2){win(a*3);notes.push(`field pays double +$${a*2}`);}
+    else if(n===12){const m=S.field12||2;win(a*(m+1));notes.push(`field pays ${m===3?'triple':'double'} +$${a*m}`);}
     else notes.push(`field −$${a}`);
     b.field=0;}
   // props
@@ -1206,7 +1231,7 @@ $('reset').onclick=()=>{const keepStake=S.stake, keepRebet=S.rebet;
   outRack:0,sOutRack:0,
   stake:keepStake||0, stakeLeft:keepStake||0,
   bets:{pass:0,passOdds:0,dont:0,dontOdds:0,place:{},field:0,hard:{},prop:{},come:{},comeNew:0,dc:{},dcNew:0},
-  working:{},oddsWorking:false,wins:[],rebet:keepRebet||'ask'};
+  working:{},oddsWorking:false,wins:[],rebet:keepRebet||'ask',field12:S.field12||2};
   $('log').innerHTML='';$('call').textContent='';$('tot').textContent='—';renderShooters();offerUsual();
   $('rebar').hidden=true;$('rbRemember').checked=false;showStanding();
   if(isDevBuild()) DBG.start();     // new session, new seed, new trace
@@ -1283,7 +1308,7 @@ Actions: "place" (add money), "down" (take a bet off), "working", "off".
 
 const EDGE_TABLE = {pass:1.41,dont:1.36,odds:0,come:1.41,dc:1.36,
   place6:1.52,place8:1.52,place5:4.0,place9:4.0,place4:6.67,place10:6.67,
-  field:5.56,hard4:11.11,hard10:11.11,hard6:9.09,hard8:9.09,
+  get field(){return (S.field12||2)===3?2.78:5.56;},hard4:11.11,hard10:11.11,hard6:9.09,hard8:9.09,
   any7:16.67,craps:11.11,yo:11.11};
 
 function describeTable(extra){
@@ -2802,6 +2827,31 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
   const viewCtl=document.getElementById('viewmode');
   if(viewCtl){ const wrap=viewCtl.closest('label');
     if(wrap){ wrap.classList.add('prefsrow'); body.prepend(wrap); } }
+  const paceCtl=document.getElementById('speed');
+  if(paceCtl){ const wrap=paceCtl.closest('label');
+    if(wrap){ wrap.classList.add('prefsrow'); body.prepend(wrap); } }
+  // Field 12 payout -- a real table-rule variation; the edge follows it.
+  const fr=document.createElement('label');
+  fr.className='prefsrow';
+  fr.innerHTML=`Field 12 pays
+    <select id="field12" class="fsel small">
+      <option value="2">double (edge 5.56%)</option>
+      <option value="3">triple (edge 2.78%)</option>
+    </select>`;
+  body.prepend(fr);
+  const f12=document.getElementById('field12');
+  try{ S.field12=+(localStorage.getItem('craps.field12')||2)||2; }catch(e){}
+  f12.value=String(S.field12);
+  const paintField=()=>{
+    const el=document.getElementById('edgeField');
+    if(el) el.textContent=(S.field12===3?'2.78':'5.56')+'%';
+    build(); render();
+  };
+  f12.onchange=()=>{ S.field12=+f12.value;
+    try{ localStorage.setItem('craps.field12', String(S.field12)); }catch(e){}
+    paintField();
+    flash(S.field12===3?'Field 12 pays triple — edge drops to 2.78%':'Field 12 pays double — edge 5.56%'); };
+  paintField();
   $('prefsBtn').onclick=()=>{ $('prefs').hidden=false; };
   $('prefsClose').onclick=()=>{ $('prefs').hidden=true; };
   document.addEventListener('keydown',e=>{
