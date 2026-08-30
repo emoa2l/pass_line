@@ -659,6 +659,8 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
             <label class="dsw"><input type="checkbox" data-d="costly"> Mention expensive bets</label>
             <label class="dsw"><input type="checkbox" data-d="house"> Say when only house money is riding</label>
             <label class="dsw"><input type="checkbox" data-d="offers"> Offer to set the bet up for me</label>
+            <label class="dsw"><input type="checkbox" data-d="aiPatterns">
+              Let the dealer find patterns itself (reads your betting history, not just fixed rules)</label>
             <div class="drow">
               <label class="flab" style="margin:0">Repeats before mentioning</label>
               <select data-d="minRepeat" class="fsel small">
@@ -735,6 +737,7 @@ let S={bank:500,start:500,unit:5,point:null,rolls:0,souts:0,run:0,best:0,
   patterns:{}, comeoutSnap:null,
   promptOff:false,    // hide the free come-out suggestion (local, costs nothing)
   aiOff:false,        // OFF = make no Bedrock calls at all (dealer + coach)
+  pool:0,                           // cash returned this shooter, funds later bets first
   fromRack:0,fromPress:0,           // session totals (currently exposed)
   outRack:0, sOutRack:0,            // TOTAL put out from the rack (never retired)
   sFromRack:0,sFromPress:0,         // this shooter
@@ -803,14 +806,20 @@ function place(id){
   // Every dollar leaving the rack is "from rack" money -- your own stake.
   const take=a=>{
     if(S.bank<a){flash('Not enough bankroll');return 0;}
-    if(S.stake && a>S.stakeLeft){
-      flash(`That would break your $${S.stake} stake for this shooter — $${S.stakeLeft} left`);
+    // Cash this shooter already returned funds the bet first -- that part is
+    // house money. Only what exceeds it is fresh money out of the rack.
+    const house=Math.min(S.pool, a), rackPart=a-house;
+    if(S.stake && rackPart>S.stakeLeft){
+      flash(`That would break your $${S.stake} stake for this shooter — $${S.stakeLeft} of your own money left`);
       return 0;
     }
-    S.bank-=a; S.fromRack+=a; S.sFromRack+=a;
-    S.outRack+=a; S.sOutRack+=a;      // total committed, never walked back
-    if(S.stake) S.stakeLeft-=a;
-    DBG.money('take', a, id);
+    S.pool-=house;
+    S.bank-=a;
+    S.fromPress+=house; S.sFromPress+=house;
+    S.fromRack+=rackPart; S.sFromRack+=rackPart;
+    S.outRack+=rackPart; S.sOutRack+=rackPart;
+    if(S.stake) S.stakeLeft-=rackPart;
+    DBG.money('take', a, id+(house?` (house $${house})`:''));
     return a;
   };
   if(id==='pass'){
@@ -862,7 +871,7 @@ function roll(){
   const before={point:was,pass:b.pass,passOdds:b.passOdds,dont:b.dont,dontOdds:b.dontOdds,
     come:{...b.come},comeNew:b.comeNew,dc:{...b.dc},dcNew:b.dcNew,
     place:{...b.place},field:b.field,hard:{...b.hard},prop:{...b.prop}};
-  const win=a=>{S.bank+=a;won+=a;};
+  const win=a=>{S.bank+=a;won+=a;S.pool+=a;};
 
   // one-roll: field
   if(b.field){const a=b.field;
@@ -1012,7 +1021,7 @@ function roll(){
 
   // Describe the roll precisely so the coach never has to guess what happened.
   let ev;
-  if(!was && S.point===n){ recordPattern(); }
+  if(!was && S.point===n){ recordPattern(); History.noteComeout(n); }
   if(!was && S.point===n)               ev=`come-out roll of ${n}; the point is NOW ESTABLISHED on ${n} (not made)`;
   else if(!was && [7,11].includes(n))   ev=`come-out ${n}, a natural; pass line wins`;
   else if(!was && [2,3,12].includes(n)) ev=`come-out ${n}, craps; pass line loses`;
@@ -1022,6 +1031,7 @@ function roll(){
   else                                  ev=`rolled ${n}`;
   // The coach speaks only when asked. Remember what just happened so that a
   // question like "what should I do?" is answered against this roll, not a blank slate.
+  History.noteRound(`${d1}+${d2}`, n, was?`point ${was}`:'come-out', outcome, netRoll);
   lastContext = {
     snap: Object.assign(snapshot(), {
       betsBeforeRoll: before,
@@ -1145,6 +1155,7 @@ $('reset').onclick=()=>{const keepStake=S.stake, keepRebet=S.rebet;
   shooterNo:1,shooterStartEq:500,shooterRolls:0,shooterPoints:0,shooters:[],history:[],
   lastOrder:null, lastBets:[],
   patterns:S.patterns||{}, comeoutSnap:null, promptOff:S.promptOff||false, aiOff:S.aiOff||false,
+  pool:0,
   fromRack:0,fromPress:0,sFromRack:0,sFromPress:0,
   outRack:0,sOutRack:0,
   stake:keepStake||0, stakeLeft:keepStake||0,
@@ -1496,6 +1507,63 @@ const AI_READY = (async () => { await Pro.load(); await AI.load(); await Consent
 
 
 
+
+// ---- Betting history -----------------------------------------------------
+// What the player actually did, kept so the dealer can recognise THEIR game --
+// their usual opening, what they press, what they never touch, and when they
+// depart from their own habit. A fixed rule list cannot find those; the
+// interesting patterns are the ones nobody thought to hardcode.
+const History = {
+  comeouts: [],   // {shooter, roll, bets:{id:amount}, point}
+  rounds: [],     // {roll, dice, total, phase, event, net}
+  MAX: 30,
+
+  // Snapshot the bets standing when a point is established -- that is the
+  // player's "opening" for this shooter.
+  noteComeout(point){
+    const b=S.bets, bets={};
+    const put=(k,v)=>{ if(v) bets[k]=v; };
+    put('pass',b.pass); put('dont',b.dont); put('passOdds',b.passOdds);
+    put('come',b.comeNew); put('dc',b.dcNew); put('field',b.field);
+    for(const n in b.place) put('place'+n, b.place[n]);
+    for(const h in b.hard) if(b.hard[h]) put('hard'+h, b.hard[h]);
+    for(const k in b.prop) if(b.prop[k]) put(k, b.prop[k]);
+    if(Object.keys(bets).length===0) return;
+    this.comeouts.push({shooter:S.shooterNo, roll:S.rolls, bets, point});
+    if(this.comeouts.length>this.MAX) this.comeouts.shift();
+  },
+  noteRound(dice,total,phase,event,net){
+    this.rounds.push({roll:S.rolls, dice, total, phase, event, net});
+    if(this.rounds.length>this.MAX) this.rounds.shift();
+  },
+  reset(){ this.comeouts=[]; this.rounds=[]; },
+
+  // A compact, factual briefing. Only what happened -- no interpretation, so the
+  // model cannot be led into a pattern the history does not support.
+  brief(){
+    if(!this.comeouts.length && !this.rounds.length) return 'No history yet this session.';
+    const L=[];
+    if(this.comeouts.length){
+      L.push('Bets the player had up when each point was established (most recent last):');
+      this.comeouts.slice(-10).forEach(c=>{
+        const s=Object.entries(c.bets).map(([k,v])=>`${k} $${v}`).join(', ');
+        L.push(`  shooter ${c.shooter}, point ${c.point}: ${s}`);
+      });
+    }
+    if(this.rounds.length){
+      L.push('Recent rolls (most recent last):');
+      L.push('  ' + this.rounds.slice(-14)
+        .map(r=>`${r.total}${r.event?'('+r.event+')':''}`).join(' '));
+    }
+    const s=S.shooters.slice(-5);
+    if(s.length){
+      L.push('Recent shooters: ' + s.map(x=>
+        `#${x.no} ${x.rolls} rolls, ${x.points} pts, ${x.net>=0?'+':'-'}$${Math.abs(x.net)}`).join('; '));
+    }
+    return L.join('\n');
+  }
+};
+
 // ---- Dealer settings -----------------------------------------------------
 // Everything the dealer does is optional and adjustable. Defaults are chosen to
 // be useful without being chatty; each AI remark costs the player a request to
@@ -1509,6 +1577,7 @@ const DealerCfg = {
     costly: true,         // mention expensive bets, once
     house: true,          // point out when only house money is riding
     offers: true,         // may offer to place the bet, never places it itself
+    aiPatterns: true,     // let the model find patterns instead of fixed rules
     minRepeat: 3,         // how many times a number must show
     gapSeconds: 20,       // minimum quiet between remarks
   },
@@ -1652,9 +1721,6 @@ function convertToHouse(betAmount, payout){
   if(repay > 0){
     S.sFromRack -= repay;  S.fromRack  -= Math.min(S.fromRack, repay);
     S.sFromPress += repay; S.fromPress += repay;
-    S.sOutRack -= Math.min(S.sOutRack, repay);   // stake recovered, no longer at risk
-    S.outRack  -= Math.min(S.outRack,  repay);
-    if(S.stake) S.stakeLeft = Math.min(S.stake, S.stakeLeft + repay);
     DBG.money('toHouse', repay, 'stake repaid by winnings');
   }
 }
@@ -1670,13 +1736,6 @@ function retire(amount, returned){
   S.sFromPress -= fromPress; S.fromPress -= fromPress;
   const rk = Math.min(S.sFromRack, fromRack);
   S.sFromRack -= rk; S.fromRack -= Math.min(S.fromRack, fromRack);
-  if(S.stake) S.stakeLeft = Math.min(S.stake, S.stakeLeft + fromRack);
-  // A stake handed back to you is no longer money out of your rack. A stake that
-  // LOST stays counted -- that is what the shooter actually cost you.
-  if(returned){
-    S.sOutRack -= Math.min(S.sOutRack, fromRack);
-    S.outRack  -= Math.min(S.outRack,  fromRack);
-  }
 }
 
 // Money coming back that was never won or lost (a push, or a bet taken down)
@@ -1685,11 +1744,15 @@ function refund(amount, uncommit){
   if(!amount) return;
   DBG.money('refund', amount, uncommit?'uncommit':'push');
   S.bank += amount;
-  // Only a bet PULLED DOWN before it was decided stops counting as committed.
-  // A push was genuinely at risk, so it stays in the total.
   if(uncommit){
-    S.sOutRack -= Math.min(S.sOutRack, amount);
-    S.outRack  -= Math.min(S.outRack,  amount);
+    // Pulled down before it was decided: this is YOUR money going back into the
+    // rack, so it un-commits rather than joining the winnings pool.
+    const back=Math.min(S.sOutRack, amount);
+    S.sOutRack-=back; S.outRack-=Math.min(S.outRack, amount);
+    if(S.stake) S.stakeLeft=Math.min(S.stake, S.stakeLeft+back);
+    S.pool += amount-back;          // any house-funded part returns to the pool
+  } else {
+    S.pool += amount;               // a push was at risk; its cash joins the pool
   }
   retire(amount);
 }
@@ -2148,7 +2211,7 @@ function endShooter(){
         + `Your result: ${rec.net>=0?'+':'−'}$${Math.abs(rec.net)}`
         + ` (put up $${rec.rack} of your own${rec.press?`, plus $${rec.press} of house money`:''})`, 'shooter');
   S.shooterNo++; S.shooterRolls=0; S.shooterPoints=0; S.shooterStartEq=eq; Reader.reset();
-  S.sFromRack=0; S.sFromPress=0; S.sOutRack=0; S.stakeLeft=S.stake;
+  S.sFromRack=0; S.sFromPress=0; S.sOutRack=0; S.pool=0; S.stakeLeft=S.stake;
   renderShooters();
 }
 function renderShooters(){
@@ -2231,10 +2294,11 @@ function applyRebet(mode){
     //   press   -> the original stake is your money, the winnings are the house's
     //   same    -> all your money
     //   regress -> a smaller bet; cover it with house money first, then your own
-    let pressPart, rackPart;
-    if(mode==='press'){ pressPart = Math.min(w.profit, stake); rackPart = stake - pressPart; }
-    else if(mode==='regress'){ pressPart = Math.min(w.profit, stake); rackPart = stake - pressPart; }
-    else { pressPart = 0; rackPart = stake; }
+    // Same funding rule as any other bet: the shooter's returned cash covers it
+    // first, and only the remainder is fresh rack money.
+    const pressPart = Math.min(S.pool, stake);
+    const rackPart  = stake - pressPart;
+    S.pool -= pressPart;
     if(S.stake && rackPart>S.stakeLeft){
       flash(`That would break your $${S.stake} stake for this shooter — $${S.stakeLeft} left`);
       short=true; return;
@@ -2351,6 +2415,60 @@ document.getElementById('rbClear').onclick=()=>{S.rebet='ask';showStanding();fla
 });
 
 
+
+// ---- AI observation ------------------------------------------------------
+// With AI enabled the model reads the history and decides what is worth saying,
+// including patterns no rule anticipates. The local Reader stays as the free
+// and offline fallback.
+const OBSERVE_SYSTEM = `You are an experienced craps dealer watching one player.
+
+You are given the player's recent betting history and recent rolls. Say the ONE
+thing a real dealer would actually remark on right now, if anything.
+
+What is worth remarking on:
+- Their habits: a repeated opening, a bet they always press, a number they never
+  cover, a departure from their own usual pattern.
+- The table: a number that keeps showing, a long shooter, a line bet with no odds.
+- Their money: a bet that just paid, house money riding, an expensive bet.
+
+Reply with JSON only:
+{"say":"<one or two sentences, dealer voice>","bets":[{"action":"place","bet":"<id>","amount":<int>}]}
+
+Bet ids: pass, dont, passOdds, come, dc, field, place4, place5, place6, place8,
+place9, place10, hard4, hard6, hard8, hard10, any7, craps, yo.
+
+Hard rules:
+- Only assert what the supplied history supports. If they have opened the same
+  way twice, you may call it their usual; if once, you may not. NEVER invent a
+  habit.
+- You may note a number repeating. You must NOT suggest that makes it likelier to
+  repeat -- dice have no memory, and a dealer who implied otherwise would be
+  lying to the player. No "due", no "hot and staying hot", no systems.
+- "bets" is an OFFER the player can wave off. Omit it or leave it empty when
+  there is nothing sensible to offer. Never offer a bet they already have up.
+- Place 6 and 8 in multiples of 6; place 5 and 9 in multiples of 5.
+- If nothing is genuinely worth saying, return {"say":"","bets":[]}. Silence is
+  correct more often than not -- do not manufacture a remark.
+- One or two sentences. No lists, no emoji.`;
+
+async function aiObserve(){
+  const user = `Table state:\n${describeTable()}\n\n`
+    + `History:\n${History.brief()}\n\n`
+    + `Their unit is $${S.unit}. What, if anything, do you say?`;
+  const raw = await AI.ask(OBSERVE_SYSTEM, user, 250);
+  const m = raw && raw.match(/\{[\s\S]*\}/);
+  if(!m) return null;
+  let out; try{ out=JSON.parse(m[0]); }catch(e){ return null; }
+  if(!out.say || !String(out.say).trim()) return null;   // the model chose silence
+  // Never offer a bet that is already up, and never one we cannot place.
+  const b=S.bets;
+  const already = id => id.startsWith('place') ? !!b.place[id.slice(5)]
+                     : id==='pass' ? !!b.pass : id==='dont' ? !!b.dont
+                     : id==='field' ? !!b.field : false;
+  const bets=(out.bets||[]).filter(x=>x && x.bet && x.amount>0 && !already(x.bet)).slice(0,4);
+  return {id:'ai:'+String(out.say).slice(0,24), say:String(out.say).trim(), bets};
+}
+
 // ---- The dealer speaking up ---------------------------------------------
 const CALL_SYSTEM = `You are an experienced craps dealer talking to one player at
 your table. You have been told a FACT about the table. Say it the way a dealer
@@ -2372,14 +2490,27 @@ let lastCall = {id:null, at:0};
 async function dealerCall(){
   if(!DealerCfg.d.speak) return;
   if(!Pro.owned || !AI.ready() || !aiAllowed()) return;
+  if(Date.now()-lastCall.at < DealerCfg.d.gapSeconds*1000) return;
+
+  // With AI on, the model reads the history and finds the pattern itself --
+  // including the ones no local rule anticipates, such as a repeated opening.
+  if(DealerCfg.d.aiPatterns){
+    try{
+      const o = await aiObserve();
+      if(!o) return;                       // the model judged there was nothing to say
+      if(o.id===lastCall.id) return;
+      lastCall={id:o.id, at:Date.now()};
+      showDealerCall(o.say, o);
+      return;
+    }catch(e){ /* fall through to the local rules */ }
+  }
+
+  // Local fallback: fixed rules over dice and current bets. Free and offline.
   const obs = Reader.read();
   if(!obs.length) return;
   const top = obs[0];
-  // Do not repeat the same observation, and leave room between remarks.
   if(top.id===lastCall.id) return;
-  if(Date.now()-lastCall.at < DealerCfg.d.gapSeconds*1000) return;
   lastCall={id:top.id, at:Date.now()};
-
   const user = `Table state:\n${describeTable()}\n\n`
     + `The fact to comment on: ${top.fact}.\n`
     + (top.bets && top.bets.length
