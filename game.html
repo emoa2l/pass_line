@@ -372,26 +372,44 @@ button.sm{padding:6px 12px;font-size:11px}
   max-height:190px;overflow-y:auto;font-size:10.5px;color:var(--muted);line-height:1.5}
 .sessdetail div{padding:2px 0;border-bottom:1px solid rgba(242,237,227,.06)}
 
-.dealer{display:flex;gap:9px;align-items:center;margin:0 0 10px;flex-wrap:wrap;
-  background:rgba(0,0,0,.28);border:1px solid rgba(201,162,39,.35);
-  border-radius:8px;padding:9px 11px}
-.dlab{font-family:Oswald,sans-serif;font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--muted)}
-.dealer button{background:var(--brass);color:#1a1200;border:none;padding:9px 16px;
-  border-radius:5px;font-size:11px;font-weight:600;letter-spacing:.1em;cursor:pointer}
-.dealer button:hover{filter:brightness(1.12)}
-.dtoggle{display:flex;align-items:center;gap:5px;font-family:Oswald,sans-serif;
-  font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+
+/* Dealer row: label + AI switch on one line, input + button on the next. It has
+   to hold together at 360px, where four items in a single flex row wrap badly. */
+.dealer{display:block;margin:0 0 10px;background:rgba(0,0,0,.28);
+  border:1px solid rgba(201,162,39,.35);border-radius:8px;padding:9px 11px}
+.dhead{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin-bottom:7px}
+.dinput{display:flex;gap:8px;align-items:stretch}
+.dinput input{flex:1;min-width:0;background:rgba(0,0,0,.4);border:1px solid var(--line);
+  border-radius:5px;color:var(--bone);padding:10px 11px;
+  font-family:"Roboto Slab",serif;font-size:13px}
+.dinput input:focus{outline:2px solid var(--brass);outline-offset:1px}
+.dinput input:disabled{opacity:.45}
+.dinput button{background:var(--brass);color:#1a1200;border:none;padding:0 18px;
+  border-radius:5px;font-size:11px;font-weight:600;letter-spacing:.1em;
   cursor:pointer;white-space:nowrap}
-.dtoggle input{accent-color:var(--brass);cursor:pointer}
-.ddot{width:7px;height:7px;border-radius:50%;background:var(--muted);display:inline-block;
-  margin-left:4px;vertical-align:middle}
-.ddot.on{background:var(--win);box-shadow:0 0 6px var(--win)}
-.ddot.off{background:var(--lose)}
-.dealer input{flex:1;min-width:190px;background:rgba(0,0,0,.4);border:1px solid var(--line);
-  border-radius:5px;color:var(--bone);padding:9px 10px;font-family:"Roboto Slab",serif;font-size:12.5px}
-.dealer input:focus{outline:2px solid var(--brass);outline-offset:1px}
-.dealer input:disabled{opacity:.45}
+.dinput button:hover{filter:brightness(1.12)}
+.dinput button:disabled{opacity:.4;cursor:not-allowed;filter:none}
+
+/* A real switch reads as a control; a bare checkbox next to text reads as a bug. */
+.dtoggle{display:inline-flex;align-items:center;gap:7px;cursor:pointer;
+  font-family:Oswald,sans-serif;font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.dtoggle input{position:absolute;opacity:0;width:0;height:0}
+.switch{width:34px;height:19px;border-radius:19px;background:rgba(0,0,0,.5);
+  border:1px solid var(--line);position:relative;transition:background .18s,border-color .18s}
+.switch::after{content:'';position:absolute;top:2px;left:2px;width:13px;height:13px;
+  border-radius:50%;background:var(--muted);transition:transform .18s,background .18s}
+.dtoggle input:checked + .switch{background:rgba(201,162,39,.35);border-color:var(--brass)}
+.dtoggle input:checked + .switch::after{transform:translateX(15px);background:var(--brass)}
+.dtoggle input:focus-visible + .switch{outline:2px solid var(--brass);outline-offset:2px}
+@media(max-width:420px){
+  .dinput button{padding:0 13px}
+  .dinput input{font-size:12.5px;padding:9px}
+}
+
+.dlab{font-family:Oswald,sans-serif;font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted)}
 .dsay{margin-top:8px;padding:8px 11px;border-radius:6px;background:rgba(201,162,39,.12);
   border:1px solid rgba(201,162,39,.4);font-family:Oswald,sans-serif;font-size:13px;
   letter-spacing:.04em;color:var(--brass);animation:slidein .2s ease-out}
@@ -416,13 +434,19 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
       </div>
 
       <div class="dealer" id="dealerBox">
-        <span class="dlab">Dealer <span class="ddot" id="dealerDot" title="checking…"></span></span>
-        <input id="dealerQ" placeholder="Tell the dealer your bet — &ldquo;twenty five across&rdquo;, &ldquo;ten on the pass line&rdquo;"
-               aria-label="Tell the dealer your bet">
-        <button id="dealerGo">Bet it</button>
-        <label class="dtoggle" title="Uncheck to make no AI calls at all — the dealer and coach go quiet and nothing is billed. Bet tracking and your usual-bet suggestions keep working either way.">
-          <input type="checkbox" id="aiEnabled" checked> AI on
-        </label>
+        <div class="dhead">
+          <span class="dlab">Dealer <span class="ddot" id="dealerDot" title="checking…"></span></span>
+          <label class="dtoggle" title="Off means no AI calls at all — the dealer and coach go quiet and nothing is billed. Bet tracking and your usual-bet suggestions keep working either way.">
+            <span class="dtoggle-text">AI</span>
+            <input type="checkbox" id="aiEnabled" checked>
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+        </div>
+        <div class="dinput">
+          <input id="dealerQ" placeholder="Tell the dealer your bet…"
+                 aria-label="Tell the dealer your bet">
+          <button id="dealerGo">Bet it</button>
+        </div>
       </div>
       <div class="dsay" id="dealerSay" hidden></div>
 
@@ -2295,6 +2319,7 @@ function setAI(on){
                         : 'AI is off — no model calls are being made'; }
   if(dg) dg.disabled=!on;
   if(dd){ dd.className='ddot'+(on?(coachUp?' on':' off'):''); dd.title=on?'':'AI off'; }
+  const tt=document.querySelector('.dtoggle-text'); if(tt) tt.textContent = on?'AI':'AI';
   const cq=$('coachQ'), ca=$('coachAsk');
   if(cq) cq.disabled=!on; if(ca) ca.disabled=!on;
   if(!on){ $('dealerSay').hidden=true;
