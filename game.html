@@ -793,13 +793,12 @@ let S={bank:500,start:500,unit:5,point:null,rolls:0,souts:0,run:0,best:0,
   promptOff:false,    // hide the free come-out suggestion (local, costs nothing)
   aiOff:false,        // OFF = make no Bedrock calls at all (dealer + coach)
   poolStake:0, poolWin:0,           // returned stakes vs profits -- they fund differently
-  fromRack:0,fromPress:0,           // session totals (currently exposed)
   outRack:0, sOutRack:0,            // TOTAL put out from the rack (never retired)
   sFromRack:0,sFromPress:0,         // this shooter
   stake:0,stakeLeft:0,              // optional per-shooter stake limit
 
   bets:{pass:0,passOdds:0,dont:0,dontOdds:0,place:{},field:0,hard:{},prop:{},come:{},comeNew:0,dc:{},dcNew:0},
-  working:{},oddsWorking:false,wins:[],rebet:'ask',field12:2};
+  working:{},wins:[],rebet:'ask',field12:2};
 
 const $=id=>document.getElementById(id);
 const pay=(a,r)=>Math.floor(a*r[0]/r[1]);
@@ -864,22 +863,13 @@ function place(id){
   // Every dollar leaving the rack is "from rack" money -- your own stake.
   const take=a=>{
     if(S.bank<a){flash('Not enough bankroll');return 0;}
-    // Funding order: your returned stakes (your money, already counted), then
-    // winnings (pressed), then fresh money out of the rack.
-    const fromStake=Math.min(S.poolStake, a);
-    const fromWin=Math.min(S.poolWin, a-fromStake);
-    const rackPart=a-fromStake-fromWin;
-    if(S.stake && rackPart>S.stakeLeft){
+    const sp=Ledger.fund(a);
+    if(!sp){
       flash(`That would break your $${S.stake} stake for this shooter — $${S.stakeLeft} of your own money left`);
       return 0;
     }
-    S.poolStake-=fromStake; S.poolWin-=fromWin;
     S.bank-=a;
-    S.fromRack+=fromStake+rackPart; S.sFromRack+=fromStake+rackPart;
-    S.fromPress+=fromWin; S.sFromPress+=fromWin;
-    S.outRack+=rackPart; S.sOutRack+=rackPart;
-    if(S.stake) S.stakeLeft-=rackPart;
-    DBG.money('take', a, id+(fromStake?` (stake $${fromStake})`:'')+(fromWin?` (win $${fromWin})`:''));
+    DBG.money('take', a, id+(sp.stake?` (stake $${sp.stake})`:'')+(sp.press?` (win $${sp.press})`:''));
     return a;
   };
   if(id==='pass'){
@@ -1015,11 +1005,6 @@ function roll(){
 
   // line bets
   if(!S.point){
-    if(n===7&&(b.passOdds||b.dontOdds)&&!S.oddsWorking){
-      // Odds are OFF on the come-out unless called on: return them.
-      if(b.passOdds){refund(b.passOdds);notes.push(`odds were off — $${b.passOdds} returned`);b.passOdds=0;}
-      if(b.dontOdds){refund(b.dontOdds);notes.push(`lay was off — $${b.dontOdds} returned`);b.dontOdds=0;}
-    }
     if(n===7||n===11){ if(b.pass){retire(b.pass, true);win(b.pass*2);notes.push(`pass +$${b.pass}`);
         S.wins.push({label:'pass line',kind:'pass',amount:b.pass,profit:b.pass}); b.pass=0;}
       if(b.dont){retire(b.dont);notes.push(`don't −$${b.dont}`);b.dont=0;} }
@@ -1087,19 +1072,16 @@ function roll(){
   // Self-check: "from rack" + "pressed" must always equal money actually on the
   // felt. If these ever diverge the tracking is wrong, and silence would hide it.
   const attributed=S.sFromRack+S.sFromPress, onFelt=risk();
+  if(S.poolStake<0||S.poolWin<0||S.sOutRack<0||(S.stake&&S.stakeLeft<0))
+    logLine(`<b>tracking check</b> a ledger field went negative — please report this roll.`,'shooter');
   if(attributed!==onFelt){
     logLine(`<b>tracking check</b> attribution $${attributed} vs felt $${onFelt} `
       + `— off by $${attributed-onFelt}. Please report this roll.`, 'shooter');
     // Re-anchor so one glitch does not corrupt every later figure.
     const excess=attributed-onFelt;
-    if(excess>0) retire(excess); else S.sFromRack+=(-excess), S.fromRack+=(-excess);
+    if(excess>0) Ledger._strip(excess,false); else S.sFromRack+=(-excess);
   }
-  // Split this roll's returned cash: stakes came back as YOUR money; anything
-  // beyond them is profit. They fund later bets differently (#18).
-  const stakesBack=Math.min(S._stakesBack||0, won);
-  S.poolStake+=stakesBack;
-  S.poolWin+=Math.max(0, won-stakesBack);
-  S._stakesBack=0;
+  Ledger.closeRoll(won);
   DBG.check('after roll ' + S.rolls);
   DBG.autosave();
   if(S.pendingShooterEnd){ S.pendingShooterEnd=false; endShooter(); }
@@ -1200,8 +1182,6 @@ function render(){
     if(!on)e.classList.add('sleeping');
   });
   renderShooters();
-  const ow=$('oddsWork'); if(ow){ow.checked=S.oddsWorking;
-    ow.parentElement.style.display=(b.passOdds||b.dontOdds)?'flex':'none';}
 }
 
 document.querySelectorAll('[data-stake]').forEach(btn=>{
@@ -1209,7 +1189,7 @@ document.querySelectorAll('[data-stake]').forEach(btn=>{
     const v=+btn.dataset.stake;
     S.stake=v;
     // Setting a stake mid-shooter credits what you have already put up.
-    S.stakeLeft=v ? Math.max(0, v - S.sFromRack) : 0;
+    S.stakeLeft=v ? Math.max(0, v - S.sOutRack) : 0;
     flash(v ? `Stake set: $${v} per shooter` : 'Stake limit off');
     renderShooters();
   };
@@ -1250,11 +1230,10 @@ $('reset').onclick=()=>{const keepStake=S.stake, keepRebet=S.rebet;
   lastOrder:null, lastBets:[],
   patterns:S.patterns||{}, comeoutSnap:null, promptOff:S.promptOff||false, aiOff:S.aiOff||false,
   poolStake:0, poolWin:0,
-  fromRack:0,fromPress:0,sFromRack:0,sFromPress:0,
-  outRack:0,sOutRack:0,
+  outRack:0,sOutRack:0, sFromRack:0,sFromPress:0,
   stake:keepStake||0, stakeLeft:keepStake||0,
   bets:{pass:0,passOdds:0,dont:0,dontOdds:0,place:{},field:0,hard:{},prop:{},come:{},comeNew:0,dc:{},dcNew:0},
-  working:{},oddsWorking:false,wins:[],rebet:keepRebet||'ask',field12:S.field12||2};
+  working:{},wins:[],rebet:keepRebet||'ask',field12:S.field12||2};
   $('log').innerHTML='';$('call').textContent='';$('tot').textContent='—';renderShooters();offerUsual();
   $('rebar').hidden=true;$('rbRemember').checked=false;showStanding();
   if(isDevBuild()) DBG.start();     // new session, new seed, new trace
@@ -1787,7 +1766,6 @@ async function tellDealer(said){
     const before=risk();
     if(b.action==='place'){
       // Re-use the same place() path the buttons use: all limits and rules apply.
-      const times=Math.max(1, Math.round((b.amount||S.unit)/S.unit));
       const savedUnit=S.unit;
       S.unit=b.amount||S.unit;
       place(b.bet);
@@ -1819,50 +1797,8 @@ $('dealerQ').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault
 
 
 
-// A standing bet just paid. The payout repays your own stake first; whatever the
-// bet is still riding on becomes house money, because your money is back in hand.
-function convertToHouse(betAmount, payout){
-  if(!betAmount || !payout) return;
-  const repay = Math.min(S.sFromRack, betAmount, payout);
-  if(repay > 0){
-    S.sFromRack -= repay;  S.fromRack  -= Math.min(S.fromRack, repay);
-    S.sFromPress += repay; S.fromPress += repay;
-    DBG.money('toHouse', repay, 'stake repaid by winnings');
-  }
-}
 
-// A bet has left the felt (won, lost, pushed, or taken down). Its share of the
-// rack/press attribution retires, because "from rack" measures money currently
-// EXPOSED for this shooter -- not a running total of everything ever bet.
-function retire(amount, returned){
-  if(!amount) return;
-  if(returned) S._stakesBack=(S._stakesBack||0)+amount;
-  DBG.money('retire', amount, returned?'stake returned':'stake lost');
-  const fromPress = Math.min(S.sFromPress, amount);   // house money retires first
-  const fromRack  = amount - fromPress;
-  S.sFromPress -= fromPress; S.fromPress -= fromPress;
-  const rk = Math.min(S.sFromRack, fromRack);
-  S.sFromRack -= rk; S.fromRack -= Math.min(S.fromRack, fromRack);
-}
 
-// Money coming back that was never won or lost (a push, or a bet taken down)
-// must also reverse its attribution, or the rack figure keeps climbing.
-function refund(amount, uncommit){
-  if(!amount) return;
-  DBG.money('refund', amount, uncommit?'uncommit':'push');
-  S.bank += amount;
-  if(uncommit){
-    // Pulled down before it was decided: this is YOUR money going back into the
-    // rack, so it un-commits rather than joining the winnings pool.
-    const back=Math.min(S.sOutRack, amount);
-    S.sOutRack-=back; S.outRack-=Math.min(S.outRack, amount);
-    if(S.stake) S.stakeLeft=Math.min(S.stake, S.stakeLeft+back);
-    S.poolStake += amount-back;     // any pool-funded part returns whence it came
-  } else {
-    S.poolStake += amount;          // a push returns your stake -- your money
-  }
-  retire(amount);
-}
 
 
 
@@ -1962,6 +1898,89 @@ function renderDbg(){
     : 'not recording';
   const b=$('dbgStart'); if(b) b.textContent = DBG.on ? 'Stop' : 'Start recording';
 }
+
+
+// ---- The attribution ledger ---------------------------------------------
+// Every dollar's story lives here and nowhere else. Fields owned:
+//   S.sOutRack   fresh money out of the rack this shooter (session: S.outRack)
+//   S.sFromRack  the player's own money exposed on the felt
+//   S.sFromPress winnings exposed on the felt
+//   S.poolStake  returned stakes in the bank, un-re-bet (the player's money)
+//   S.poolWin    profits in the bank, un-re-bet
+//   S.stakeLeft  headroom under the optional per-shooter stake cap
+// Invariant, checked every roll: sFromRack + sFromPress === risk().
+const Ledger = {
+  // Fund a bet of `amount`: returned stakes first (own exposure, no new outflow),
+  // then profits (pressed exposure), then fresh rack money. Null on a stake break.
+  fund(amount){
+    const stake=Math.min(S.poolStake, amount);
+    const press=Math.min(S.poolWin, amount-stake);
+    const rack=amount-stake-press;
+    if(S.stake && rack>S.stakeLeft) return null;
+    S.poolStake-=stake; S.poolWin-=press;
+    S.sFromRack+=stake+rack; S.sFromPress+=press;
+    S.sOutRack+=rack; S.outRack+=rack;
+    if(S.stake) S.stakeLeft-=rack;
+    return {stake,press,rack};
+  },
+  // Exact inverse, for a funded bet that could not actually be placed.
+  unfund(sp){
+    if(!sp) return;
+    S.poolStake+=sp.stake; S.poolWin+=sp.press;
+    S.sFromRack-=sp.stake+sp.rack; S.sFromPress-=sp.press;
+    S.sOutRack-=sp.rack; S.outRack-=Math.min(S.outRack, sp.rack);
+    if(S.stake) S.stakeLeft=Math.min(S.stake, S.stakeLeft+sp.rack);
+  },
+  _strip(amount, rackFirst, rackCap){
+    // Remove `amount` of exposure. Losses/wins strip pressed money first (it dies
+    // or comes home before yours); a pull-down strips the pulled bet's own side
+    // first so a standing pressed bet keeps its label (audit F6).
+    if(rackFirst){
+      const rk=Math.min(S.sFromRack, rackCap!=null?Math.min(amount,rackCap):amount);
+      S.sFromRack-=rk;
+      S.sFromPress-=Math.min(S.sFromPress, amount-rk);
+    } else {
+      const pr=Math.min(S.sFromPress, amount);
+      S.sFromPress-=pr;
+      S.sFromRack-=Math.min(S.sFromRack, amount-pr);
+    }
+  },
+  // A bet of `amount` left the felt. Outcome decides where its story goes.
+  settle(amount, outcome){
+    if(!amount) return;
+    DBG.money('settle:'+outcome, amount);
+    if(outcome==='lost'){ this._strip(amount,false); return; }
+    if(outcome==='won'){ this._strip(amount,false); S._stakesBack=(S._stakesBack||0)+amount; return; }
+    if(outcome==='push'){ S.bank+=amount; this._strip(amount,false); S.poolStake+=amount; return; }
+    // 'pulled': never risked -- fresh money un-commits, pool-funded parts go home.
+    S.bank+=amount;
+    const back=Math.min(S.sOutRack, amount);
+    S.sOutRack-=back; S.outRack-=Math.min(S.outRack, back);
+    if(S.stake) S.stakeLeft=Math.min(S.stake, S.stakeLeft+back);
+    this._strip(amount,true,back);
+    S.poolStake+=amount-back;
+  },
+  // A standing bet just paid: its stake is repaid by the winnings, so the money
+  // still riding is pressed -- and the repaid share is a RETURNED STAKE, not
+  // profit, when this roll's returns are split (audit F1).
+  convert(stake, payout){
+    const repay=Math.min(S.sFromRack, stake, payout);
+    if(repay<=0) return;
+    S.sFromRack-=repay; S.sFromPress+=repay;
+    S._stakesBack=(S._stakesBack||0)+repay;
+    DBG.money('toHouse', repay, 'stake repaid by winnings');
+  },
+  // Split this roll's returned cash into the two pools.
+  closeRoll(won){
+    const sb=Math.min(S._stakesBack||0, won);
+    S.poolStake+=sb;
+    S.poolWin+=Math.max(0, won-sb);
+    S._stakesBack=0;
+  }
+};
+function retire(amount, returned){ Ledger.settle(amount, returned?'won':'lost'); }
+function refund(amount, uncommit){ Ledger.settle(amount, uncommit?'pulled':'push'); }
+function convertToHouse(a,w){ Ledger.convert(a,w); }
 
 // ---- Pattern learning ---------------------------------------------------
 // Learns from what you ACTUALLY bet, not from asking a model to guess. We record
@@ -2274,7 +2293,7 @@ function saveSession(){
     id: S.sessionId || (S.sessionId=sessionId()),
     ts: new Date().toISOString(),
     rolls:S.rolls, shooters:S.shooters.length, net,
-    rack:S.fromRack, press:S.fromPress,
+    rack:S.shooters.reduce((a,s)=>a+(s.rack||0),0)+rackNet(), press:S.sFromPress,
     best:S.shooters.reduce((a,s)=>!a||s.net>a.net?s:a,null),
     worst:S.shooters.reduce((a,s)=>!a||s.net<a.net?s:a,null),
     shooterRows:S.shooters.map(s=>({no:s.no,rolls:s.rolls,points:s.points,net:s.net,rack:s.rack,press:s.press})),
@@ -2392,7 +2411,7 @@ function renderShooters(){
   const sum=$('shooterSummary');
   if(sum) sum.innerHTML = n===0 ? '<span class="muted">No completed shooters yet.</span>'
     : `${n} shooter${n===1?'':'s'} done · ${wins} profitable · `
-      + `rack $${S.outRack} · on returns $${S.fromPress} · `
+      + `rack $${S.outRack} · pressed now $${S.sFromPress} · `
       + `best ${bestS.net>=0?'+':'−'}$${Math.abs(bestS.net)} (#${bestS.no}) · `
       + `worst ${worstS.net>=0?'+':'−'}$${Math.abs(worstS.net)} (#${worstS.no}) · `
       + `total ${tot>=0?'+':'−'}$${Math.abs(tot)}`;
@@ -2434,23 +2453,11 @@ function applyRebet(mode){
     //   press   -> the original stake is your money, the winnings are the house's
     //   same    -> all your money
     //   regress -> a smaller bet; cover it with house money first, then your own
-    // Same funding rule as any other bet: the shooter's returned cash covers it
-    // first, and only the remainder is fresh rack money.
-    const fromStake = Math.min(S.poolStake, stake);
-    const pressPart = Math.min(S.poolWin, stake - fromStake);
-    const rackPart  = stake - fromStake - pressPart;
-    S.poolStake -= fromStake; S.poolWin -= pressPart;
-    if(S.stake && rackPart>S.stakeLeft){
-      flash(`That would break your $${S.stake} stake for this shooter — $${S.stakeLeft} left`);
-      short=true; return;
-    }
+    const sp=Ledger.fund(stake);
+    if(!sp){ short=true; return; }
     S.bank-=stake; placed+=stake;
-    S.fromRack+=fromStake+rackPart;  S.sFromRack+=fromStake+rackPart;
-    S.outRack+=rackPart;   S.sOutRack+=rackPart;
-    S.fromPress+=pressPart; S.sFromPress+=pressPart;
+    DBG.money('rebet:'+mode, stake, `stake ${sp.stake} win ${sp.press} rack ${sp.rack}`);
     autoNotes.push(`${w.label} re-bet $${stake}`);
-    if(S.stake) S.stakeLeft-=rackPart;
-    DBG.money('rebet:'+mode, stake, `rack ${rackPart} press ${pressPart}`);
     if(w.kind==='pass')      S.bets.pass+=stake;
     else if(w.kind==='dont') S.bets.dont+=stake;
     else if(w.kind==='come') S.bets.comeNew+=stake;
@@ -2459,13 +2466,7 @@ function applyRebet(mode){
       // Odds need a live line bet and a point; hold them until both exist.
       if(S.point&&S.bets.pass) S.bets.passOdds+=stake;
       else {placed-=stake; short=true;
-        // The unwind must mirror the funding exactly, or refused odds leave
-        // stake-pool exposure attributed with no bet on the felt (seed 2024, r49).
-        S.fromRack-=(fromStake+rackPart); S.sFromRack-=(fromStake+rackPart);
-        S.fromPress-=pressPart; S.sFromPress-=pressPart;
-        S.outRack-=rackPart; S.sOutRack-=rackPart;
-        S.poolStake+=fromStake; S.poolWin+=pressPart;
-        S.bank+=stake; if(S.stake) S.stakeLeft+=rackPart;}
+        S.bank+=stake; Ledger.unfund(sp);}
     }
   });
   const bar=$('rebar'); bar.hidden=true;
