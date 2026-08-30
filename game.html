@@ -231,11 +231,6 @@ button.sm{padding:6px 12px;font-size:11px}
   padding:0;margin:0;color:var(--muted);font-family:Oswald,sans-serif;font-size:14px;
   letter-spacing:.13em;text-transform:uppercase;font-weight:400;cursor:pointer;text-align:left}
 .chbtn:hover{color:var(--bone);filter:none}
-.card h2.ch{display:flex;align-items:center;gap:8px}
-.grip{cursor:grab;color:var(--muted);font-size:13px;line-height:1;
-  touch-action:none;user-select:none;padding:2px 3px;flex:none}
-.grip:hover{color:var(--brass)}
-.card.dragging{opacity:.75;outline:2px dashed var(--brass);outline-offset:2px}
 .chbtn:focus-visible{outline:2px solid var(--brass);outline-offset:3px}
 .caret{margin-left:auto;width:8px;height:8px;border-right:2px solid currentColor;
   border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .18s ease;
@@ -580,26 +575,6 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
       </table>
       </div>
     </div>
-
-    <div class="card" data-card="math">
-      <h2 class="ch"><button class="chbtn" type="button" aria-expanded="true">What the math says<span class="caret"></span></button></h2>
-      <div class="cbody">
-      <table>
-        <tr><th>Bet</th><th>Edge</th></tr>
-        <tr><td>Pass + odds</td><td class="edge">0.6%</td></tr>
-        <tr><td>Don't pass</td><td class="edge">1.36%</td></tr>
-        <tr><td>Pass line</td><td class="edge">1.41%</td></tr>
-        <tr><td>Place 6 / 8</td><td class="edge">1.52%</td></tr>
-        <tr><td>Place 5 / 9</td><td class="edge">4.00%</td></tr>
-        <tr><td>Place 4 / 10</td><td class="edge">6.67%</td></tr>
-        <tr><td>Field</td><td class="edge">5.56%</td></tr>
-        <tr><td>Hardways</td><td class="edge">9–11%</td></tr>
-        <tr><td>Any 7</td><td class="edge">16.67%</td></tr>
-      </table>
-      <p class="hint">Odds behind the line pay true — zero edge. They're the only free bet on the table, which is why the pass+odds row is the lowest number here.</p>
-      </div>
-    </div>
-
     <div class="card coach" id="coachCard" data-card="coach">
       <h2 class="ch"><button class="chbtn" type="button" aria-expanded="true">Coach <span id="coachDot" class="dot" title="checking..."></span><span class="caret"></span></button></h2>
       <div class="cbody">
@@ -611,7 +586,6 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
       <div class="auto">Answers only when you ask.</div>
       </div>
     </div>
-
     <div class="card" data-card="shooters">
       <h2 class="ch"><button class="chbtn" type="button" aria-expanded="true">By shooter<span class="caret"></span></button></h2>
       <div class="cbody">
@@ -637,6 +611,27 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
         <p class="hint" id="shooterSummary"></p>
       </div>
     </div>
+    <div class="card" data-card="math">
+      <h2 class="ch"><button class="chbtn" type="button" aria-expanded="true">What the math says<span class="caret"></span></button></h2>
+      <div class="cbody">
+      <table>
+        <tr><th>Bet</th><th>Edge</th></tr>
+        <tr><td>Pass + odds</td><td class="edge">0.6%</td></tr>
+        <tr><td>Don't pass</td><td class="edge">1.36%</td></tr>
+        <tr><td>Pass line</td><td class="edge">1.41%</td></tr>
+        <tr><td>Place 6 / 8</td><td class="edge">1.52%</td></tr>
+        <tr><td>Place 5 / 9</td><td class="edge">4.00%</td></tr>
+        <tr><td>Place 4 / 10</td><td class="edge">6.67%</td></tr>
+        <tr><td>Field</td><td class="edge">5.56%</td></tr>
+        <tr><td>Hardways</td><td class="edge">9–11%</td></tr>
+        <tr><td>Any 7</td><td class="edge">16.67%</td></tr>
+      </table>
+      <p class="hint">Odds behind the line pay true — zero edge. They're the only free bet on the table, which is why the pass+odds row is the lowest number here.</p>
+      </div>
+    </div>
+
+
+
 
     <div class="card" data-card="sessions">
       <h2 class="ch"><button class="chbtn" type="button" aria-expanded="true">Sessions<span class="caret"></span></button></h2>
@@ -2785,62 +2780,19 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
 })();
 
 
-// ---- Reorderable rail --------------------------------------------------
-// The player decides what sits on top. Pointer events cover mouse and touch
-// with one code path; the order persists on the device.
-(function(){
-  const rail=document.querySelector('.rail'); if(!rail) return;
-  const KEY='craps.cardorder';
-
-  // restore saved order
-  try{
-    const want=JSON.parse(localStorage.getItem(KEY)||'null');
-    if(Array.isArray(want)) want.forEach(k=>{
-      const c=rail.querySelector(`[data-card="${k}"]`); if(c) rail.appendChild(c);
-    });
-  }catch(e){}
-
-  const save=()=>{ try{ localStorage.setItem(KEY,
-    JSON.stringify([...rail.querySelectorAll('[data-card]')].map(c=>c.dataset.card))); }catch(e){} };
-
-  rail.querySelectorAll('[data-card]').forEach(card=>{
-    const head=card.querySelector('.ch'); if(!head) return;
-    const grip=document.createElement('span');
-    grip.className='grip'; grip.textContent='⠿';
-    grip.title='Drag to reorder'; grip.setAttribute('aria-label','Drag to reorder');
-    head.prepend(grip);
-
-    grip.addEventListener('pointerdown', e=>{
-      e.preventDefault();
-      grip.setPointerCapture(e.pointerId);
-      card.classList.add('dragging');
-      const move=ev=>{
-        const y=ev.clientY;
-        for(const other of rail.querySelectorAll('[data-card]:not(.dragging)')){
-          const r=other.getBoundingClientRect();
-          if(y>r.top && y<r.bottom){
-            const before = y < r.top + r.height/2;
-            rail.insertBefore(card, before ? other : other.nextSibling);
-            break;
-          }
-        }
-      };
-      const up=()=>{
-        card.classList.remove('dragging');
-        grip.removeEventListener('pointermove',move);
-        grip.removeEventListener('pointerup',up);
-        grip.removeEventListener('pointercancel',up);
-        save();
-      };
-      grip.addEventListener('pointermove',move);
-      grip.addEventListener('pointerup',up);
-      grip.addEventListener('pointercancel',up);
-    });
-  });
-})();
-
 // ---- Collapsible rail cards (choice remembered per card) ----
+// A collapsed card folds AND sinks to the bottom of the rail; expanding it
+// returns it to its place in the fixed order: money, coach, shooters, math.
 (function(){
+  const CANON=['money','coach','shooters','math'];
+  const rail=document.querySelector('.rail');
+  const relayout=()=>{
+    if(!rail) return;
+    const byKey=k=>rail.querySelector(`[data-card="${k}"]`);
+    const open=CANON.filter(k=>{const c=byKey(k);return c&&!c.classList.contains('collapsed');});
+    const shut=CANON.filter(k=>{const c=byKey(k);return c&&c.classList.contains('collapsed');});
+    [...open,...shut].forEach(k=>rail.appendChild(byKey(k)));
+  };
   let saved={};
   try{ saved=JSON.parse(localStorage.getItem('craps.rail')||'{}'); }catch(e){ saved={}; }
   document.querySelectorAll('.card[data-card]').forEach(card=>{
@@ -2855,8 +2807,10 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
       const open=card.classList.contains('collapsed');
       set(open); saved[key]=open;
       try{ localStorage.setItem('craps.rail',JSON.stringify(saved)); }catch(e){}
+      relayout();
     });
   });
+  relayout();   // apply the saved collapsed states to the ordering on load
 })();
 
 </script>
