@@ -605,7 +605,7 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
         <div class="split">
           <div class="sp"><span class="lab">From your rack</span><b class="num" id="spRack">$0</b>
             <span class="subnote" id="spExposed">$0 still out</span></div>
-          <div class="sp"><span class="lab">Riding on returns</span><b class="num press" id="spPress">$0</b></div>
+          <div class="sp"><span class="lab">Winnings riding</span><b class="num press" id="spPress">$0</b></div>
         </div>
         <table id="shooterTable"></table>
         <p class="hint" id="shooterSummary"></p>
@@ -770,7 +770,7 @@ let S={bank:500,start:500,unit:5,point:null,rolls:0,souts:0,run:0,best:0,
   patterns:{}, comeoutSnap:null,
   promptOff:false,    // hide the free come-out suggestion (local, costs nothing)
   aiOff:false,        // OFF = make no Bedrock calls at all (dealer + coach)
-  pool:0,                           // cash returned this shooter, funds later bets first
+  poolStake:0, poolWin:0,           // returned stakes vs profits -- they fund differently
   fromRack:0,fromPress:0,           // session totals (currently exposed)
   outRack:0, sOutRack:0,            // TOTAL put out from the rack (never retired)
   sFromRack:0,sFromPress:0,         // this shooter
@@ -839,20 +839,22 @@ function place(id){
   // Every dollar leaving the rack is "from rack" money -- your own stake.
   const take=a=>{
     if(S.bank<a){flash('Not enough bankroll');return 0;}
-    // Cash this shooter already returned funds the bet first -- that part is
-    // house money. Only what exceeds it is fresh money out of the rack.
-    const house=Math.min(S.pool, a), rackPart=a-house;
+    // Funding order: your returned stakes (your money, already counted), then
+    // winnings (pressed), then fresh money out of the rack.
+    const fromStake=Math.min(S.poolStake, a);
+    const fromWin=Math.min(S.poolWin, a-fromStake);
+    const rackPart=a-fromStake-fromWin;
     if(S.stake && rackPart>S.stakeLeft){
       flash(`That would break your $${S.stake} stake for this shooter — $${S.stakeLeft} of your own money left`);
       return 0;
     }
-    S.pool-=house;
+    S.poolStake-=fromStake; S.poolWin-=fromWin;
     S.bank-=a;
-    S.fromPress+=house; S.sFromPress+=house;
-    S.fromRack+=rackPart; S.sFromRack+=rackPart;
+    S.fromRack+=fromStake+rackPart; S.sFromRack+=fromStake+rackPart;
+    S.fromPress+=fromWin; S.sFromPress+=fromWin;
     S.outRack+=rackPart; S.sOutRack+=rackPart;
     if(S.stake) S.stakeLeft-=rackPart;
-    DBG.money('take', a, id+(house?` (house $${house})`:''));
+    DBG.money('take', a, id+(fromStake?` (stake $${fromStake})`:'')+(fromWin?` (win $${fromWin})`:''));
     return a;
   };
   if(id==='pass'){
@@ -904,7 +906,7 @@ function roll(){
   const before={point:was,pass:b.pass,passOdds:b.passOdds,dont:b.dont,dontOdds:b.dontOdds,
     come:{...b.come},comeNew:b.comeNew,dc:{...b.dc},dcNew:b.dcNew,
     place:{...b.place},field:b.field,hard:{...b.hard},prop:{...b.prop}};
-  const win=a=>{S.bank+=a;won+=a;S.pool+=a;};
+  const win=a=>{S.bank+=a;won+=a;};
 
   // one-roll: field
   if(b.field){const a=b.field;
@@ -1044,6 +1046,12 @@ function roll(){
     const excess=attributed-onFelt;
     if(excess>0) retire(excess); else S.sFromRack+=(-excess), S.fromRack+=(-excess);
   }
+  // Split this roll's returned cash: stakes came back as YOUR money; anything
+  // beyond them is profit. They fund later bets differently (#18).
+  const stakesBack=Math.min(S._stakesBack||0, won);
+  S.poolStake+=stakesBack;
+  S.poolWin+=Math.max(0, won-stakesBack);
+  S._stakesBack=0;
   DBG.check('after roll ' + S.rolls);
   DBG.autosave();
   if(S.pendingShooterEnd){ S.pendingShooterEnd=false; endShooter(); }
@@ -1099,8 +1107,9 @@ function render(){
   const chip=(id,amt,cls)=>{if(!amt)return;const e=$('b_'+id);if(!e)return;
     const c=document.createElement('div');c.className='chip'+(cls?' '+cls:'');c.textContent=amt;e.appendChild(c);};
   chip('pass',b.pass);chip('dont',b.dont);
-  const feltView=document.getElementById('layout').classList.contains('felt');
-  if(feltView && S.point && (b.passOdds||b.dontOdds)){
+  // The odds ride behind the point in EVERY view -- the chip on the number is
+  // how you see where they live (#21).
+  if(S.point && (b.passOdds||b.dontOdds)){
     // No odds box on a real layout: the odds ride behind the line, shown on the point.
     const e=$('b_place'+S.point);
     if(e){const c=document.createElement('div');c.className='chip odds';
@@ -1192,7 +1201,7 @@ $('reset').onclick=()=>{const keepStake=S.stake, keepRebet=S.rebet;
   shooterNo:1,shooterStartEq:500,shooterRolls:0,shooterPoints:0,shooters:[],history:[],
   lastOrder:null, lastBets:[],
   patterns:S.patterns||{}, comeoutSnap:null, promptOff:S.promptOff||false, aiOff:S.aiOff||false,
-  pool:0,
+  poolStake:0, poolWin:0,
   fromRack:0,fromPress:0,sFromRack:0,sFromPress:0,
   outRack:0,sOutRack:0,
   stake:keepStake||0, stakeLeft:keepStake||0,
@@ -1779,6 +1788,7 @@ function convertToHouse(betAmount, payout){
 // EXPOSED for this shooter -- not a running total of everything ever bet.
 function retire(amount, returned){
   if(!amount) return;
+  if(returned) S._stakesBack=(S._stakesBack||0)+amount;
   DBG.money('retire', amount, returned?'stake returned':'stake lost');
   const fromPress = Math.min(S.sFromPress, amount);   // house money retires first
   const fromRack  = amount - fromPress;
@@ -1799,9 +1809,9 @@ function refund(amount, uncommit){
     const back=Math.min(S.sOutRack, amount);
     S.sOutRack-=back; S.outRack-=Math.min(S.outRack, amount);
     if(S.stake) S.stakeLeft=Math.min(S.stake, S.stakeLeft+back);
-    S.pool += amount-back;          // any house-funded part returns to the pool
+    S.poolStake += amount-back;     // any pool-funded part returns whence it came
   } else {
-    S.pool += amount;               // a push was at risk; its cash joins the pool
+    S.poolStake += amount;          // a push returns your stake -- your money
   }
   retire(amount);
 }
@@ -2279,7 +2289,7 @@ function endShooter(){
         + `Your result: ${rec.net>=0?'+':'−'}$${Math.abs(rec.net)}`
         + ` (put up $${rec.rack} of your own${rec.press?`, plus $${rec.press} of house money`:''})`, 'shooter');
   S.shooterNo++; S.shooterRolls=0; S.shooterPoints=0; S.shooterStartEq=eq; Reader.reset();
-  S.sFromRack=0; S.sFromPress=0; S.sOutRack=0; S.pool=0; S.stakeLeft=S.stake;
+  S.sFromRack=0; S.sFromPress=0; S.sOutRack=0; S.poolStake=0; S.poolWin=0; S.stakeLeft=S.stake;
   renderShooters();
 }
 function renderShooters(){
@@ -2364,15 +2374,16 @@ function applyRebet(mode){
     //   regress -> a smaller bet; cover it with house money first, then your own
     // Same funding rule as any other bet: the shooter's returned cash covers it
     // first, and only the remainder is fresh rack money.
-    const pressPart = Math.min(S.pool, stake);
-    const rackPart  = stake - pressPart;
-    S.pool -= pressPart;
+    const fromStake = Math.min(S.poolStake, stake);
+    const pressPart = Math.min(S.poolWin, stake - fromStake);
+    const rackPart  = stake - fromStake - pressPart;
+    S.poolStake -= fromStake; S.poolWin -= pressPart;
     if(S.stake && rackPart>S.stakeLeft){
       flash(`That would break your $${S.stake} stake for this shooter — $${S.stakeLeft} left`);
       short=true; return;
     }
     S.bank-=stake; placed+=stake;
-    S.fromRack+=rackPart;  S.sFromRack+=rackPart;
+    S.fromRack+=fromStake+rackPart;  S.sFromRack+=fromStake+rackPart;
     S.outRack+=rackPart;   S.sOutRack+=rackPart;
     S.fromPress+=pressPart; S.sFromPress+=pressPart;
     autoNotes.push(`${w.label} re-bet $${stake}`);
@@ -2386,8 +2397,12 @@ function applyRebet(mode){
       // Odds need a live line bet and a point; hold them until both exist.
       if(S.point&&S.bets.pass) S.bets.passOdds+=stake;
       else {placed-=stake; short=true;
-        S.fromRack-=rackPart; S.sFromRack-=rackPart;
+        // The unwind must mirror the funding exactly, or refused odds leave
+        // stake-pool exposure attributed with no bet on the felt (seed 2024, r49).
+        S.fromRack-=(fromStake+rackPart); S.sFromRack-=(fromStake+rackPart);
         S.fromPress-=pressPart; S.sFromPress-=pressPart;
+        S.outRack-=rackPart; S.sOutRack-=rackPart;
+        S.poolStake+=fromStake; S.poolWin+=pressPart;
         S.bank+=stake; if(S.stake) S.stakeLeft+=rackPart;}
     }
   });
