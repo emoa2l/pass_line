@@ -1377,9 +1377,7 @@ const AI = {
     try{ const s=JSON.parse(await SecureStore.get('craps.ai')||'null');
       if(s) this.cfg=Object.assign(this.cfg,s); }catch(e){}
     const p=PROVIDERS[this.cfg.provider];
-    const isDev = !(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())
-                  && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
-    if(!p || p.browserBlocked || (p.devOnly && !isDev)){ this.cfg.provider='openrouter'; }
+    if(!p || p.browserBlocked || (p.devOnly && !isDevBuild())){ this.cfg.provider='openrouter'; }
   },
   async save(){
     await SecureStore.set('craps.ai', JSON.stringify(this.cfg));
@@ -1526,6 +1524,18 @@ function refund(amount, uncommit){
 }
 
 
+
+// ---- Development build detection ----------------------------------------
+// True only when running from a local dev server in a browser. A packaged app
+// (Capacitor) or any real host is a production build, and development-only
+// surfaces -- the Debug card, the local coach.py provider -- are removed.
+function isDevBuild(){
+  const packaged = !!(window.Capacitor && window.Capacitor.isNativePlatform
+                   && window.Capacitor.isNativePlatform());
+  if(packaged) return false;
+  return /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+}
+
 // ================= DEBUG RECORDER =================
 // Records every action and every money movement so a session can be replayed
 // exactly. Dice come from a seeded PRNG, so a seed + action list reproduces a
@@ -1534,6 +1544,7 @@ const DBG = {
   on: false, seed: 0, n: 0, events: [], moves: [],
   rng: null,
   start(seed){
+    if(!isDevBuild()) return;        // recorder is a development tool
     this.seed = seed || (Date.now() % 2147483647);
     this.n = 0; this.events = []; this.moves = [];
     this.rng = this.mk(this.seed);
@@ -1543,6 +1554,13 @@ const DBG = {
     this.log('session', {seed:this.seed, bank:S.bank, unit:S.unit});
     flash(`Debug recording — seed ${this.seed}`);
     renderDbg();
+// The Debug card is a development tool: remove it from the DOM in a shipped
+// build so it cannot be opened, rather than merely hiding it with CSS.
+(function(){
+  if(isDevBuild()) return;
+  const card=document.querySelector('[data-card="debug"]');
+  if(card) card.remove();
+})();
   },
   stop(){ this.on=false; flash('Debug recording stopped'); renderDbg(); },
   mk(seed){ let s = seed >>> 0; return () => { // mulberry32
@@ -1713,10 +1731,8 @@ renderDbg();
   const sel=$('aiProvider'), key=$('aiKey'), model=$('aiModel'),
         urlRow=$('aiUrlRow'), url=$('aiBaseUrl'), stat=$('aiStat'), hint=$('aiHint');
   // Development-only providers are not offered in a packaged app or on a real host.
-  const IS_DEV = !(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())
-                 && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   Object.entries(PROVIDERS).forEach(([id,p])=>{
-    if(p.devOnly && !IS_DEV) return;
+    if(p.devOnly && !isDevBuild()) return;
     const o=document.createElement('option'); o.value=id; o.textContent=p.label; sel.appendChild(o);
   });
   const syncUI=()=>{
