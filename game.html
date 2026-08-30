@@ -605,7 +605,7 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
         <div class="split">
           <div class="sp"><span class="lab">From your rack</span><b class="num" id="spRack">$0</b>
             <span class="subnote" id="spExposed">$0 still out</span></div>
-          <div class="sp"><span class="lab">House money pressed</span><b class="num press" id="spPress">$0</b></div>
+          <div class="sp"><span class="lab">Riding on returns</span><b class="num press" id="spPress">$0</b></div>
         </div>
         <table id="shooterTable"></table>
         <p class="hint" id="shooterSummary"></p>
@@ -1080,8 +1080,11 @@ function render(){
   const b=S.bets;
   const bk=$('bank'); const prev=+(bk.dataset.v||S.bank);
   if(prev!==S.bank){bk.classList.remove('bump','up','down');void bk.offsetWidth;
-    // classList.add() rejects tokens containing spaces -- add them separately.
-    bk.classList.add('bump', S.bank>prev?'up':'down');}
+    bk.classList.add('bump', S.bank>prev?'up':'down');
+    // The pulse is a moment, not a state: merely placing a bet is not bad news,
+    // so the color leaves with the animation.
+    clearTimeout(bk._bumpT);
+    bk._bumpT=setTimeout(()=>bk.classList.remove('bump','up','down'), 700);}
   bk.dataset.v=S.bank; bk.textContent='$'+S.bank;
   const net=S.bank+risk()-S.start;
   const ne=$('net');ne.textContent=(net>=0?'+$':'−$')+Math.abs(net);
@@ -2317,7 +2320,7 @@ function renderShooters(){
   const sum=$('shooterSummary');
   if(sum) sum.innerHTML = n===0 ? '<span class="muted">No completed shooters yet.</span>'
     : `${n} shooter${n===1?'':'s'} done · ${wins} profitable · `
-      + `rack $${S.outRack} · pressed $${S.fromPress} · `
+      + `rack $${S.outRack} · on returns $${S.fromPress} · `
       + `best ${bestS.net>=0?'+':'−'}$${Math.abs(bestS.net)} (#${bestS.no}) · `
       + `worst ${worstS.net>=0?'+':'−'}$${Math.abs(worstS.net)} (#${worstS.no}) · `
       + `total ${tot>=0?'+':'−'}$${Math.abs(tot)}`;

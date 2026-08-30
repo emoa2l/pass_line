@@ -49,8 +49,9 @@ BY SHOOTER panel
   never risked it), and when a standing bet pays you more than its stake -- at
   that point your stake is recovered and what is still riding is house money.
 - "$X still on the felt": how much of that is currently exposed rather than settled.
-- House money pressed: winnings riding on the table instead of your own stake.
-  Pressing a win, or leaving a paid bet up, moves money into this bucket.
+- Riding on returns: money on the felt funded by cash this shooter already paid
+  back -- winnings AND returned stakes. It can exceed the session profit, because
+  a returned stake is not profit; it is simply no longer fresh rack money.
 - Rack / Press columns: those same two figures for each shooter.
 - P&L: the change in equity (bankroll + felt) across that shooter's turn.
 - Stake per shooter: an optional cap. The table refuses bets from your rack that
