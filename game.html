@@ -267,8 +267,13 @@ button.sm{padding:6px 12px;font-size:11px}
 #layout.felt #b_field .t{font-size:15px;letter-spacing:.05em}
 #layout.felt .bet{border-radius:4px}
 /* the pass line is the outer edge of the table -- round its outside corners */
-#layout.felt #b_pass{border-bottom-left-radius:14px;border-bottom-right-radius:44px}
-#layout.felt #b_dont{border-bottom-left-radius:44px;border-bottom-right-radius:14px}
+/* The curved outer rail only reads as a rail while DON'T and PASS sit side by
+   side. Once they stack on a narrow screen the asymmetry looks like a clipping
+   bug, so it is dropped there. */
+@media(min-width:760px){
+  #layout.felt #b_pass{border-bottom-left-radius:14px;border-bottom-right-radius:44px}
+  #layout.felt #b_dont{border-bottom-left-radius:44px;border-bottom-right-radius:14px}
+}
 .oddsnote{display:none}
 #layout.felt .oddsnote{display:block;font-size:10.5px;color:var(--muted);
   text-align:center;letter-spacing:.06em;margin-top:-2px}
