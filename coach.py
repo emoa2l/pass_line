@@ -68,6 +68,10 @@ ROLL LOG
 SESSIONS
 - Saved as day-month-year-N. Each keeps the shooters, the log, and the totals.
 
+- Shooter boundaries are strict: pools of returned money die with the shooter.
+  A bet placed after a seven-out is the NEW shooter's fresh rack money, even if
+  the previous shooter's win paid for it a moment earlier.
+
 INVARIANT the table checks every roll:
   (from your rack) + (house money pressed) == (money on the felt)
 """

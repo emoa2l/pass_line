@@ -1270,6 +1270,10 @@ BY SHOOTER panel
 ROLL LOG: roll number, dice, phase, outcome, net, resolved bets, bank/felt/shooter.
 An "auto" line means a win was re-bet by your standing choice. A DRIFT line is a bug.
 
+- Shooter boundaries are strict: pools of returned money die with the shooter.
+  A bet placed after a seven-out is the NEW shooter's fresh rack money, even if
+  the previous shooter's win paid for it a moment earlier.
+
 INVARIANT checked every roll: (from your rack) + (house money pressed) == (on the felt)
 `;
 
