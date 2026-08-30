@@ -326,6 +326,16 @@ button.sm{padding:6px 12px;font-size:11px}
 .aistat{margin-top:9px;font-family:Oswald,sans-serif;font-size:11.5px;letter-spacing:.05em;
   padding:7px 9px;border-radius:5px;background:rgba(0,0,0,.3);border:1px solid var(--line);color:var(--muted)}
 .aistat.ok{color:var(--win);border-color:rgba(95,208,138,.4)}
+.lockbox{background:rgba(201,162,39,.10);border:1px solid rgba(201,162,39,.45);
+  border-radius:8px;padding:13px 14px;margin-bottom:12px}
+.lockhead{font-family:Oswald,sans-serif;font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--brass);margin-bottom:7px}
+.lockcopy{margin:0 0 8px;font-size:12.5px;line-height:1.55;color:var(--bone)}
+.lockcopy.small{font-size:11.5px;color:var(--muted)}
+#proBuy{background:var(--brass);color:#1a1200;border:none;padding:9px 16px;
+  border-radius:5px;font-size:11px;font-weight:600;letter-spacing:.1em;cursor:pointer}
+#proBuy:hover{filter:brightness(1.12)}
+#aiControls.locked{opacity:.35;pointer-events:none}
 .consent{display:flex;gap:7px;align-items:flex-start;margin-top:10px;
   font-size:11.5px;line-height:1.5;color:var(--muted);cursor:pointer}
 .consent input{accent-color:var(--brass);margin-top:2px;flex:none;cursor:pointer}
@@ -555,6 +565,20 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
     <div class="card" data-card="ai">
       <h2 class="ch"><button class="chbtn" type="button" aria-expanded="false">AI setup<span class="caret"></span></button></h2>
       <div class="cbody">
+        <div class="lockbox" id="lockBox" hidden>
+          <div class="lockhead">Advanced</div>
+          <p class="lockcopy">The coach and the spoken-bet dealer are part of Advanced,
+          a one-time unlock. Everything else — the table, your money tracking, shooter
+          history, sessions and statistics — is free and stays free.</p>
+          <p class="lockcopy small">You use your own AI provider key, so there is no
+          subscription and no per-message cost to us. You pay your provider directly.</p>
+          <div class="logctl">
+            <button id="proBuy">Unlock Advanced</button>
+            <button class="ghost sm" id="proRestore">Restore purchase</button>
+          </div>
+          <div class="aistat" id="proStat" hidden></div>
+        </div>
+        <div id="aiControls">
         <label class="flab">Provider</label>
         <select id="aiProvider" class="fsel"></select>
         <div id="aiUrlRow" hidden>
@@ -575,6 +599,7 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
         <label class="consent"><input type="checkbox" id="aiConsent">
           <span id="aiConsentText">I understand what gets sent.</span></label>
         <p class="hint" id="aiHint"></p>
+        </div>
         <details class="priv">
           <summary>Privacy</summary>
           <div id="privText"></div>
@@ -1153,7 +1178,10 @@ function describeTable(extra){
 // Android EncryptedSharedPreferences. On the plain web there is no keystore, so
 // it falls back to localStorage and the UI says so.
 const SecureStore = {
-  native: !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences),
+  get native(){
+    return !!(window.Capacitor && window.Capacitor.Plugins
+           && window.Capacitor.Plugins.Preferences);
+  },
   async get(k){
     if(this.native){
       const {value}=await window.Capacitor.Plugins.Preferences.get({key:k});
@@ -1264,10 +1292,64 @@ const PROVIDERS = {
   },
   local: {
     label:'Local proxy (coach.py)', keyLabel:'not needed', models:[], isLocal:true,
-    hint:'Uses coach.py on this machine — for desktop development.',
+    devOnly:true,
+    hint:'Uses coach.py on this machine — development only, not available in the app.',
   }
 };
 
+
+
+// ---- Entitlement ---------------------------------------------------------
+// Free tier: the whole craps table -- every bet, full money tracking, per-shooter
+// P&L, sessions, statistics, the debug recorder. It is a complete app on its own.
+// Advanced (one-time in-app purchase): the AI coach and the spoken-bet dealer.
+//
+// The purchase is verified by the store (StoreKit / Google Play Billing) through
+// the Capacitor purchases plugin. On the plain web build there is no store, so the
+// features are simply available -- there is nothing to sell there.
+const Pro = {
+  PRODUCT_ID: 'passline.advanced',
+  owned: false,
+  native(){ return !!(window.Capacitor && window.Capacitor.Plugins
+                   && window.Capacitor.Plugins.Purchases); },
+  async load(){
+    if(!this.native()){ this.owned = true; return; }   // web build: nothing to sell
+    const cached = (await SecureStore.get('craps.pro'))==='1';
+    try{
+      const {Purchases}=window.Capacitor.Plugins;
+      const info=await Purchases.getCustomerInfo();
+      const live = !!(info && info.entitlements && info.entitlements.active
+                   && info.entitlements.active.advanced);
+      // Never revoke a paid unlock because the store was slow, offline, or
+      // returned stale data. Only a successful "no entitlement" from a store we
+      // actually reached could downgrade, and that is not worth the risk of
+      // locking a paying customer out of what they bought.
+      this.owned = live || cached;
+      if(live) await SecureStore.set('craps.pro','1');
+    }catch(e){
+      this.owned = cached;
+    }
+  },
+  async buy(){
+    if(!this.native()) return true;
+    const {Purchases}=window.Capacitor.Plugins;
+    const offerings=await Purchases.getOfferings();
+    const pkg=offerings?.current?.availablePackages?.[0];
+    if(!pkg) throw new Error('Store did not return the product');
+    const res=await Purchases.purchasePackage({aPackage:pkg});
+    this.owned = !!res?.customerInfo?.entitlements?.active?.advanced;
+    if(this.owned) await SecureStore.set('craps.pro','1');
+    return this.owned;
+  },
+  async restore(){
+    if(!this.native()) return true;
+    const {Purchases}=window.Capacitor.Plugins;
+    const info=await Purchases.restorePurchases();
+    this.owned = !!info?.entitlements?.active?.advanced;
+    if(this.owned) await SecureStore.set('craps.pro','1');
+    return this.owned;
+  }
+};
 
 // ---- Consent ------------------------------------------------------------
 // Both stores require disclosure BEFORE data is transmitted to a third party.
@@ -1295,7 +1377,9 @@ const AI = {
     try{ const s=JSON.parse(await SecureStore.get('craps.ai')||'null');
       if(s) this.cfg=Object.assign(this.cfg,s); }catch(e){}
     const p=PROVIDERS[this.cfg.provider];
-    if(!p || p.browserBlocked){ this.cfg.provider='openrouter'; }
+    const isDev = !(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())
+                  && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+    if(!p || p.browserBlocked || (p.devOnly && !isDev)){ this.cfg.provider='openrouter'; }
   },
   async save(){
     await SecureStore.set('craps.ai', JSON.stringify(this.cfg));
@@ -1305,6 +1389,7 @@ const AI = {
     await SecureStore.remove('craps.ai');
   },
   ready(){
+    if(!Pro.owned) return false;      // advanced feature
     if(!Consent.ok) return false;
     const p=PROVIDERS[this.cfg.provider];
     if(!p) return false;
@@ -1315,6 +1400,7 @@ const AI = {
     return true;
   },
   async ask(system, user, maxTokens){
+    if(!Pro.owned) throw new Error('The AI coach and dealer are part of Advanced.');
     if(!Consent.ok) throw new Error('Not permitted yet — agree to the data notice in AI setup.');
     const p=PROVIDERS[this.cfg.provider];
     if(!p) throw new Error('No AI provider selected');
@@ -1328,7 +1414,7 @@ const AI = {
   }
 };
 // One shared init: every panel awaits this rather than racing its own load.
-const AI_READY = (async () => { await AI.load(); await Consent.load(); })();
+const AI_READY = (async () => { await Pro.load(); await AI.load(); await Consent.load(); })();
 
 // ---- AI dealer: speak your bets. The model only PROPOSES; the game validates
 // and executes, so it can never create money or place an illegal bet. ----
@@ -1626,7 +1712,11 @@ renderDbg();
   await AI_READY;           // fields must not populate before storage is read
   const sel=$('aiProvider'), key=$('aiKey'), model=$('aiModel'),
         urlRow=$('aiUrlRow'), url=$('aiBaseUrl'), stat=$('aiStat'), hint=$('aiHint');
+  // Development-only providers are not offered in a packaged app or on a real host.
+  const IS_DEV = !(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())
+                 && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   Object.entries(PROVIDERS).forEach(([id,p])=>{
+    if(p.devOnly && !IS_DEV) return;
     const o=document.createElement('option'); o.value=id; o.textContent=p.label; sel.appendChild(o);
   });
   const syncUI=()=>{
@@ -1682,6 +1772,48 @@ renderDbg();
   };
 })();
 
+
+
+// ---- Purchase UI ----
+(async function(){
+  await AI_READY;
+  const box=$('lockBox'), controls=$('aiControls'), stat=$('proStat');
+  const say=(t,cls)=>{stat.hidden=false;stat.textContent=t;stat.className='aistat'+(cls?' '+cls:'');};
+  const refresh=()=>{
+    if(Pro.owned){
+      box.hidden=true; controls.classList.remove('locked');
+    } else {
+      box.hidden=false; controls.classList.add('locked');
+    }
+    // The dealer row should say why it is unavailable, not just look broken.
+    const dq=$('dealerQ');
+    if(dq && !Pro.owned){
+      dq.disabled=true;
+      dq.placeholder='Unlock Advanced to talk to the dealer';
+    }
+    if(!Pro.owned) setCoach('The coach is part of Advanced — a one-time unlock in AI setup. '
+      + 'The table, tracking and statistics are free.');
+  };
+  refresh();
+  $('proBuy').onclick=async()=>{
+    say('Contacting the store…');
+    try{
+      const got=await Pro.buy();
+      if(got){ say('Unlocked. Add your provider key below.','ok'); refresh(); ping(); }
+      else say('Purchase was not completed.','err');
+    }catch(e){ say('Could not complete: '+String(e.message||e).slice(0,90),'err'); }
+  };
+  $('proRestore').onclick=async()=>{
+    say('Checking your purchases…');
+    try{
+      const got=await Pro.restore();
+      say(got?'Purchase restored.':'No previous purchase found for this account.',
+          got?'ok':'err');
+      if(got){ refresh(); ping(); }
+    }catch(e){ say('Could not restore: '+String(e.message||e).slice(0,90),'err'); }
+  };
+  window.__proRefresh=refresh;
+})();
 
 // ---- Consent + privacy UI ----
 (async function(){

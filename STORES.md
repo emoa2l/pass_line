@@ -46,6 +46,28 @@ game/education title, not a gambling app.
 - Age rating: both will ask about simulated gambling. Answer **yes** — it rates
   the app 17+ / Mature but is straightforward. Answering no risks removal.
 
+## Tiers and the in-app purchase
+
+**Free:** the entire craps table — every bet, the money model, per-shooter P&L,
+sessions, statistics, the debug recorder. It is a complete, useful app on its own.
+
+**Advanced (one-time non-consumable IAP):** the AI coach and the spoken-bet dealer.
+
+Product id: `passline.advanced`. Wire it with a purchases plugin
+(RevenueCat's Capacitor plugin is the least work; the code expects an entitlement
+named `advanced`). Create the same product in App Store Connect and Play Console.
+
+Two behaviours that matter for review and for customers:
+
+- **Restore purchase is required by Apple** and is implemented — a visible
+  "Restore purchase" button next to the unlock button.
+- **A paid unlock is never revoked by a failed or stale store check.** If the store
+  is offline or returns nothing, the cached grant stands. Only a fresh, successful
+  entitlement can turn it on; nothing turns it off automatically.
+
+The local `coach.py` provider is hidden outside localhost, so shipped users never
+see a development option.
+
 ## Bring-your-own-key and IAP
 
 Apple has rejected apps where an external paid service looked like it dodged IAP.

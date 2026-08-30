@@ -50,6 +50,13 @@ stake is recovered and whatever keeps riding becomes house money.
 Invariant enforced every roll: `rack + pressed == felt`. A violation writes a
 **DRIFT** line into the roll log rather than silently showing a wrong number.
 
+## Tiers
+
+Free: the whole table, money tracking, shooter history, sessions, statistics.
+Advanced (one-time purchase): the AI coach and the spoken-bet dealer.
+
+On the web build there is no store, so Advanced is simply available.
+
 ## Self-contained
 
 `game.html` is the entire app: no external scripts, stylesheets, images or fonts.
