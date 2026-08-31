@@ -75,6 +75,17 @@ SESSIONS
 INVARIANT the table checks every roll:
   (from your rack) + (house money pressed) == (money on the felt)
 
+ODDS LIMIT (Preferences -> Odds limit): pass and come odds cap at the table
+multiple -- 3-4-5x standard (3x on 4/10, 4x on 5/9, 5x on 6/8, so any winning
+line+odds pays six times the flat bet); the don't lay caps at the amount whose
+win equals the right side's max. 2x, 10x and no-limit tables are selectable.
+
+COME ODDS: once a come bet travels to a number, tap its C chip to put true-odds
+money behind it (the O chip; the verbal dealer takes "odds on my come" too). They
+pay true odds when the come point hits, lose to a mid-hand seven, and sit OFF on
+the come-out -- a come-out 7 or come-point hit returns them untouched. Take Down
+removes them; the flat come bet stays until it wins or loses.
+
 WORKING TOGGLE: only place bets have one. Long-press (or right-click / W) flips what
 the bet is currently doing: on the come-out it arms or disarms working; with the
 point on it calls the bet OFF or back on. An off bet can neither win nor lose and

@@ -200,6 +200,7 @@ td{font-variant-numeric:tabular-nums}
 .ask button{padding:8px 13px;font-size:11px}
 .auto{display:flex;align-items:center;gap:6px;margin-top:9px;font-size:11.5px;color:var(--muted);cursor:pointer}
 
+.chip.co{margin-top:26px}
 .mark{position:absolute;bottom:3px;left:50%;transform:translateX(-50%);
   font-family:Oswald,sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.08em;
   padding:1px 5px;border-radius:3px;line-height:1.5;white-space:nowrap}
@@ -820,8 +821,8 @@ let S={bank:500,start:500,unit:5,point:null,rolls:0,souts:0,run:0,best:0,
   sFromRack:0,sFromPress:0,         // this shooter
   stake:0,stakeLeft:0,              // optional per-shooter stake limit
 
-  bets:{pass:0,passOdds:0,dont:0,dontOdds:0,place:{},field:0,hard:{},prop:{},come:{},comeNew:0,dc:{},dcNew:0},
-  working:{},wins:[],rebet:'ask',field12:2};
+  bets:{pass:0,passOdds:0,dont:0,dontOdds:0,place:{},field:0,hard:{},prop:{},come:{},comeNew:0,comeOdds:{},dc:{},dcNew:0},
+  working:{},wins:[],rebet:'ask',field12:2,oddsCap:'345'};
 
 const $=id=>document.getElementById(id);
 const pay=(a,r)=>Math.floor(a*r[0]/r[1]);
@@ -829,7 +830,8 @@ const pay=(a,r)=>Math.floor(a*r[0]/r[1]);
 function risk(){const b=S.bets;let t=b.pass+b.passOdds+b.dont+b.dontOdds+b.field+b.comeNew+b.dcNew;
   for(const k in b.dc)t+=b.dc[k];
   for(const k in b.place)t+=b.place[k]; for(const k in b.hard)t+=b.hard[k];
-  for(const k in b.prop)t+=b.prop[k]; for(const k in b.come)t+=b.come[k]; return t;}
+  for(const k in b.prop)t+=b.prop[k]; for(const k in b.come)t+=b.come[k];
+  for(const k in b.comeOdds)t+=b.comeOdds[k]; return t;}
 
 function build(){
   const P=$('placeRow');P.innerHTML='';
@@ -910,6 +912,35 @@ function toggleWorking(num){
   render();
 }
 
+// ---- Table odds limits ---------------------------------------------------
+// S.oddsCap: '345' (default, the standard 3-4-5x table), '2', '10', or '0'
+// for no limit. Pass/come odds cap at the multiple; the don't lay caps at the
+// amount whose WIN equals the right side's max (6x flat on a 3-4-5x table).
+function oddsCapMult(pt){
+  const cap=S.oddsCap||'345';
+  if(cap==='0') return Infinity;
+  if(cap==='345') return {4:3,10:3,5:4,9:4,6:5,8:5}[pt]||3;
+  return +cap;
+}
+function oddsRoom(pt, flat, current){          // pass / come odds
+  const m=oddsCapMult(pt);
+  return m===Infinity ? Infinity : Math.max(0, flat*m - current);
+}
+function layRoom(pt, flat, current){           // don't-side lay odds
+  const cap=S.oddsCap||'345';
+  if(cap==='0') return Infinity;
+  const maxWin = cap==='345' ? flat*6 : flat*(+cap);
+  const [numer,den]=ODDS_PAY[pt];              // right side pays numer:den
+  const maxLay = Math.floor(maxWin*numer/den); // lay wins den:numer
+  return Math.max(0, maxLay - current);
+}
+function clampOdds(room, want, what){
+  if(want<=room) return want;
+  if(room<=0){ flash(`Table limit — no more odds room ${what}`); return 0; }
+  flash(`Table limit — only $${room} more allowed ${what}`);
+  return room;
+}
+
 function place(id){
   const b=S.bets,u=S.unit;
   DBG.log('bet', {bet:id, amount:u});
@@ -925,11 +956,23 @@ function place(id){
     DBG.money('take', a, id+(sp.stake?` (stake $${sp.stake})`:'')+(sp.press?` (win $${sp.press})`:''));
     return a;
   };
+  if(id.startsWith('comeOdds')){
+    const cn=+id.slice(8);
+    if(!b.come[cn]){ flash('No come bet on the '+cn+' to back'); return; }
+    const w=clampOdds(oddsRoom(cn,b.come[cn],b.comeOdds[cn]||0), u, 'behind the come '+cn);
+    if(!w){ render(); return; }
+    const a=take(w);
+    if(a){ b.comeOdds[cn]=(b.comeOdds[cn]||0)+a;
+      flash(`$${a} odds behind your come ${cn} (now $${b.comeOdds[cn]}) — true odds, zero edge. Off on the come-out.`); }
+    render(); return;
+  }
   if(id==='pass'){
     if(S.point){
       // Half-table view has no separate odds box: clicking the line again backs it.
       if(document.getElementById('layout').classList.contains('felt') && b.pass){
-        const a=take(u);
+        const w=clampOdds(oddsRoom(S.point,b.pass,b.passOdds), u, 'behind the line');
+        if(!w){ render(); return; }
+        const a=take(w);
         if(a){ b.passOdds+=a;
           flash(`$${a} odds behind the line (now $${b.passOdds}) — zero house edge. `
               + `Take Down removes odds; the flat bet stays.`); }
@@ -942,7 +985,13 @@ function place(id){
   else if(id==='passOdds'){
     if(!S.point){flash('Odds go up after a point is established');return;}
     if(!b.pass&&!b.dont){flash('You need a line bet before backing it with odds');return;}
-    if(b.pass)b.passOdds+=take(u); else b.dontOdds+=take(u);
+    if(b.pass){
+      const w=clampOdds(oddsRoom(S.point,b.pass,b.passOdds), u, 'behind the line');
+      if(w) b.passOdds+=take(w);
+    } else {
+      const w=clampOdds(layRoom(S.point,b.dont,b.dontOdds), u, 'on the lay');
+      if(w) b.dontOdds+=take(w);
+    }
   }
   else if(id==='come'){ if(!S.point){flash('Come bets need a point working');return;} b.comeNew+=take(u); }
   else if(id==='dc'){ if(!S.point){flash("Don't come bets need a point working");return;} b.dcNew+=take(u); }
@@ -1000,7 +1049,7 @@ function roll(){
   // Snapshot the bets as they stood BEFORE this roll resolved: after resolution a
   // winning bet is gone, and the coach cannot tell a win from an empty table.
   const before={point:was,pass:b.pass,passOdds:b.passOdds,dont:b.dont,dontOdds:b.dontOdds,
-    come:{...b.come},comeNew:b.comeNew,dc:{...b.dc},dcNew:b.dcNew,
+    come:{...b.come},comeNew:b.comeNew,comeOdds:{...b.comeOdds},dc:{...b.dc},dcNew:b.dcNew,
     place:{...b.place},field:b.field,hard:{...b.hard},prop:{...b.prop}};
   const win=a=>{S.bank+=a;won+=a;};
 
@@ -1026,9 +1075,18 @@ function roll(){
     else if(n===H&&hard){retire(a, true);win(a+a*HARD_PAY[H]);notes.push(`HARD ${H} +$${a*HARD_PAY[H]}`);b.hard[h]=0;}}
 
   // established come bets resolve BEFORE a new come bet travels
-  if(n===7){for(const p in b.come){retire(b.come[p]);notes.push(`come ${p} −$${b.come[p]}`);}b.come={};}
+  if(n===7){for(const p in b.come){retire(b.come[p]);notes.push(`come ${p} −$${b.come[p]}`);}b.come={};
+    for(const p in b.comeOdds){const a=b.comeOdds[p];
+      if(was){retire(a);notes.push(`come odds ${p} −$${a}`);}
+      else{refund(a, true);notes.push(`come odds ${p} were off on the come-out — $${a} back`);}}
+    b.comeOdds={};}
   else if(PLACE_PAY[n]&&b.come[n]){const a=b.come[n];retire(a, true);win(a*2);notes.push(`come ${n} +$${a}`);
-    S.wins.push({label:`come ${n}`,kind:'come',amount:a,profit:a}); delete b.come[n];}
+    S.wins.push({label:`come ${n}`,kind:'come',amount:a,profit:a}); delete b.come[n];
+    if(b.comeOdds[n]){const o=b.comeOdds[n];
+      if(was){const w=pay(o,ODDS_PAY[n]);retire(o, true);win(o+w);notes.push(`come odds ${n} +$${w}`);
+        S.wins.push({label:`come odds ${n}`,kind:'come',amount:o,profit:w});}
+      else{refund(o, true);notes.push(`come odds ${n} were off on the come-out — $${o} back`);}
+      delete b.comeOdds[n];}}
   // established don't-come bets resolve first (same ordering rule as come)
   if(n===7){for(const p in b.dc){const a=b.dc[p];retire(a, true);win(a*2);notes.push(`don't come ${p} +$${a}`);
     S.wins.push({label:`don't come ${p}`,kind:'dc',amount:a,profit:a});}b.dc={};}
@@ -1211,7 +1269,14 @@ function render(){
   chip('come',b.comeNew);chip('dc',b.dcNew);chip('field',b.field);
   for(const n in b.place)chip('place'+n,b.place[n]);
   for(const n in b.come){const e=$('b_place'+n);if(e){const c=document.createElement('div');
-    c.className='chip odds';c.textContent='C'+b.come[n];e.appendChild(c);}}
+    c.className='chip odds';c.textContent='C'+b.come[n];
+    c.title='Tap to put odds behind this come bet';
+    c.onclick=ev=>{ev.stopPropagation();place('comeOdds'+n);};
+    e.appendChild(c);
+    if(b.comeOdds[n]){const o=document.createElement('div');
+      o.className='chip odds co';o.textContent='O'+b.comeOdds[n];
+      o.onclick=ev=>{ev.stopPropagation();place('comeOdds'+n);};
+      e.appendChild(o);}}}
   for(const n in b.dc){const e=$('b_place'+n);if(e){const c=document.createElement('div');
     c.className='chip dc';c.textContent='D'+b.dc[n];e.appendChild(c);}}
   for(const h in b.hard)chip('hard'+h,b.hard[h]);
@@ -1289,6 +1354,7 @@ $('clear').onclick=()=>{const b=S.bets; DBG.log('clear', {});
   for(const k in b.prop){refund(b.prop[k], true);} b.prop={};
   // Free odds can always come down -- only the FLAT line bet is a contract.
   refund(b.passOdds+b.dontOdds, true); b.passOdds=0; b.dontOdds=0;
+  for(const n in b.comeOdds){refund(b.comeOdds[n], true);} b.comeOdds={};
   if(!S.point){refund(b.pass+b.dont, true);b.pass=0;b.dont=0;}
   flash(S.point ? 'Took down everything removable — the flat line bet is a contract and stays.'
                 : 'Took everything down.');
@@ -1302,8 +1368,8 @@ $('reset').onclick=()=>{const keepStake=S.stake, keepRebet=S.rebet;
   poolStake:0, poolWin:0,
   outRack:0,sOutRack:0, sFromRack:0,sFromPress:0,
   stake:keepStake||0, stakeLeft:keepStake||0,
-  bets:{pass:0,passOdds:0,dont:0,dontOdds:0,place:{},field:0,hard:{},prop:{},come:{},comeNew:0,dc:{},dcNew:0},
-  working:{},wins:[],rebet:keepRebet||'ask',field12:S.field12||2};
+  bets:{pass:0,passOdds:0,dont:0,dontOdds:0,place:{},field:0,hard:{},prop:{},come:{},comeNew:0,comeOdds:{},dc:{},dcNew:0},
+  working:{},wins:[],rebet:keepRebet||'ask',field12:S.field12||2,oddsCap:S.oddsCap||'345'};
   $('log').innerHTML='';$('call').textContent='';$('tot').textContent='—';renderShooters();offerUsual();
   $('rebar').hidden=true;$('rbRemember').checked=false;showStanding();
   if(isDevBuild()) DBG.start();     // new session, new seed, new trace
@@ -1346,6 +1412,17 @@ An "auto" line means a win was re-bet by your standing choice. A DRIFT line is a
 
 INVARIANT checked every roll: (from your rack) + (house money pressed) == (on the felt)
 
+ODDS LIMIT (Preferences → Odds limit): pass and come odds cap at the table
+multiple — 3-4-5x standard (3x on 4/10, 4x on 5/9, 5x on 6/8, so any winning
+line+odds pays six times the flat bet); the don't lay caps at the amount whose
+win equals the right side's max. 2x, 10x and no-limit tables are selectable.
+
+COME ODDS: once a come bet travels to a number, tap its C chip to put true-odds
+money behind it (the O chip; the verbal dealer takes "odds on my come" too). They
+pay true odds when the come point hits, lose to a mid-hand seven, and sit OFF on
+the come-out — a come-out 7 or come-point hit returns them untouched. Take Down
+removes them; the flat come bet stays until it wins or loses.
+
 WORKING TOGGLE: only place bets have one. Long-press (or right-click / W) flips what
 the bet is currently doing: on the come-out it arms or disarms working; with the
 point on it calls the bet OFF or back on. An off bet can neither win nor lose and
@@ -1380,6 +1457,7 @@ Convert what they say into bet instructions. Reply with JSON only, no prose:
 
 Valid bet ids: pass, dont, passOdds, come, dc, field,
 place4, place5, place6, place8, place9, place10,
+comeOdds4, comeOdds5, comeOdds6, comeOdds8, comeOdds9, comeOdds10 (odds behind an existing come bet on that number),
 hard4, hard6, hard8, hard10, any7, craps, yo
 Actions: "place" (add money), "down" (take a bet off), "working", "off".
 
@@ -1408,6 +1486,7 @@ function describeTable(extra){
   add('pass line',b.pass,'pass'); add('odds behind the line',b.passOdds||b.dontOdds,'odds');
   add("don't pass",b.dont,'dont'); add('come',b.comeNew,'come'); add("don't come",b.dcNew,'dc');
   for(const n in b.come) add(`come on ${n}`,b.come[n],'come');
+  for(const n in b.comeOdds) add(`odds behind come ${n}`,b.comeOdds[n],'odds');
   for(const n in b.dc) add(`don't come on ${n}`,b.dc[n],'dc');
   for(const n in b.place) add(`place ${n}${placeIsWorking(n)?'':' (OFF — not working)'}`,b.place[n],'place'+n);
   add('field',b.field,'field');
@@ -2981,7 +3060,7 @@ function snapshot(){
   const b=S.bets;
   return {point:S.point,bank:S.bank,risk:risk(),net:S.bank+risk()-S.start,
     bets:{pass:b.pass,passOdds:b.passOdds,dont:b.dont,dontOdds:b.dontOdds,
-      comeNew:b.comeNew,come:b.come,dcNew:b.dcNew,dc:b.dc,place:b.place,field:b.field,hard:b.hard,prop:b.prop}};
+      comeNew:b.comeNew,come:b.come,comeOdds:b.comeOdds,dcNew:b.dcNew,dc:b.dc,place:b.place,field:b.field,hard:b.hard,prop:b.prop}};
 }
 function setCoach(t,cls){const e=document.getElementById('coachText');
   e.className='ctext'+(cls?' '+cls:'');e.textContent=t;}
@@ -3111,6 +3190,26 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
   const paceCtl=document.getElementById('speed');
   if(paceCtl){ const wrap=paceCtl.closest('label');
     if(wrap){ wrap.classList.add('prefsrow'); body.prepend(wrap); } }
+  // Table odds limit -- the other classic table rule.
+  const orow=document.createElement('label');
+  orow.className='prefsrow';
+  orow.innerHTML=`Odds limit
+    <select id="oddsCap" class="fsel small">
+      <option value="345">3-4-5x (standard)</option>
+      <option value="2">2x</option>
+      <option value="10">10x</option>
+      <option value="0">no limit</option>
+    </select>`;
+  body.prepend(orow);
+  const oc=document.getElementById('oddsCap');
+  try{ S.oddsCap=localStorage.getItem('craps.oddsCap')||'345'; }catch(e){ S.oddsCap='345'; }
+  oc.value=S.oddsCap;
+  oc.onchange=()=>{ S.oddsCap=oc.value;
+    try{ localStorage.setItem('craps.oddsCap', S.oddsCap); }catch(e){}
+    flash(S.oddsCap==='0' ? 'No table limit on odds'
+      : S.oddsCap==='345' ? 'Odds capped at 3-4-5x — the standard table'
+      : `Odds capped at ${S.oddsCap}x the flat bet`); };
+
   // Field 12 payout -- a real table-rule variation; the edge follows it.
   const fr=document.createElement('label');
   fr.className='prefsrow';
