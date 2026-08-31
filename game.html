@@ -424,13 +424,11 @@ button.sm{padding:6px 12px;font-size:11px}
 .sessdetail div{padding:2px 0;border-bottom:1px solid rgba(242,237,227,.06)}
 
 
-/* Dealer row: label + AI switch on one line, input + button on the next. It has
-   to hold together at 360px, where four items in a single flex row wrap badly. */
+/* Dealer strip: one row — input, Bet it, AI switch, status dot. The input is
+   the only flexible item, so the row holds at 360px without wrapping. */
 .dealer{display:block;margin:0 0 10px;background:rgba(0,0,0,.28);
-  border:1px solid rgba(201,162,39,.35);border-radius:8px;padding:9px 11px}
-.dhead{display:flex;align-items:center;justify-content:space-between;gap:10px;
-  margin-bottom:7px}
-.dinput{display:flex;gap:8px;align-items:stretch}
+  border:1px solid rgba(201,162,39,.35);border-radius:8px;padding:6px 9px}
+.dinput{display:flex;gap:8px;align-items:center}
 .dinput input{flex:1;min-width:0;background:rgba(0,0,0,.4);border:1px solid var(--line);
   border-radius:5px;color:var(--bone);padding:10px 11px;
   font-family:"Roboto Slab",serif;font-size:13px}
@@ -496,18 +494,16 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
       </div>
 
       <div class="dealer" id="dealerBox">
-        <div class="dhead">
-          <span class="dlab">Dealer <span class="ddot" id="dealerDot" title="checking…"></span></span>
+        <div class="dinput">
+          <input id="dealerQ" placeholder="Tell the dealer…"
+                 aria-label="Tell the dealer your bet">
+          <button id="dealerGo">Bet it</button>
           <label class="dtoggle" title="Off means no AI calls at all — the dealer and coach go quiet and nothing is billed. Bet tracking and your usual-bet suggestions keep working either way.">
             <span class="dtoggle-text">AI</span>
             <input type="checkbox" id="aiEnabled" checked>
             <span class="switch" aria-hidden="true"></span>
           </label>
-        </div>
-        <div class="dinput">
-          <input id="dealerQ" placeholder="Tell the dealer your bet…"
-                 aria-label="Tell the dealer your bet">
-          <button id="dealerGo">Bet it</button>
+          <span class="ddot" id="dealerDot" title="checking…"></span>
         </div>
       </div>
       <div class="dsay" id="dealerSay" hidden></div>
@@ -1516,7 +1512,11 @@ const Pro = {
   native(){ return !!(window.Capacitor && window.Capacitor.Plugins
                    && window.Capacitor.Plugins.Purchases); },
   async load(){
-    if(!this.native()){ this.owned = true; return; }   // web build: nothing to sell
+    // Web build has nothing to sell. Native DEBUG builds (Xcode debug scheme /
+    // simulator) also skip the paywall so the AI key can be exercised without a
+    // sandbox purchase -- App Store and TestFlight binaries are Release, where
+    // Capacitor injects DEBUG:false, so no shipping build is affected.
+    if(!this.native() || window.Capacitor.DEBUG === true){ this.owned = true; return; }
     const cached = (await SecureStore.get('craps.pro'))==='1';
     try{
       const {Purchases}=window.Capacitor.Plugins;
@@ -1767,14 +1767,19 @@ const Reader = {
 
 // ---- AI dealer: speak your bets. The model only PROPOSES; the game validates
 // and executes, so it can never create money or place an illegal bet. ----
+// Dealer replies fade out on their own like table chatter would — anything that
+// placed a bet is already in the log, so nothing the player needs is lost.
+function dsay(text, cls, ttl){
+  const box=$('dealerSay');
+  box.hidden=false; box.className='dsay'+(cls?' '+cls:''); box.textContent=text;
+  clearTimeout(box._fade);
+  if(ttl) box._fade=setTimeout(()=>{ box.hidden=true; }, ttl);
+}
 async function tellDealer(said){
   if(!said)return;
-  const box=$('dealerSay');
-  if(!aiAllowed()){ box.hidden=false; box.className='dsay err';
-    box.textContent='AI is off — no model calls are being made.'; return; }
-  if(!AI.ready()){ box.hidden=false; box.className='dsay err';
-    box.textContent='No AI provider set up yet — open Settings in the rail.'; return; }
-  box.hidden=false; box.className='dsay'; box.textContent='…';
+  if(!aiAllowed()){ dsay('AI is off — no model calls are being made.','err',9000); return; }
+  if(!AI.ready()){ dsay('No AI provider set up yet — open Settings in the rail.','err',9000); return; }
+  dsay('…','');
   let out;
   try{
     const mem = S.lastOrder
@@ -1786,7 +1791,7 @@ async function tellDealer(said){
     const raw=await AI.ask(DEALER_SYSTEM, user, 400);
     const m=raw.match(/\{[\s\S]*\}/);
     out = m ? JSON.parse(m[0]) : {say:'Sorry — say that again?', bets:[]};
-  }catch(e){ box.className='dsay err'; box.textContent='Could not reach the dealer: '+e.message; return; }
+  }catch(e){ dsay('Could not reach the dealer: '+e.message,'err',9000); return; }
   const done=[];
   (out.bets||[]).forEach(b=>{
     const before=risk();
@@ -1811,8 +1816,7 @@ async function tellDealer(said){
   // a real bet rather than a refused or misheard one.
   const placedBets=(out.bets||[]).filter(b=>b.action==='place'&&b.amount>0);
   if(done.length && placedBets.length){ S.lastOrder=said; S.lastBets=placedBets; }
-  box.className='dsay';
-  box.textContent=out.say || (done.length?`Bet placed: ${done.join(', ')}`:'Nothing changed.');
+  dsay(out.say || (done.length?`Bet placed: ${done.join(', ')}`:'Nothing changed.'), '', 6500);
   if(done.length) logLine(`<b>Dealer</b> ${out.say||''} <span class="ldetail">${done.join(' · ')}</span>`,'');
   render();
 }
