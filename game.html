@@ -24,6 +24,7 @@
 *{box-sizing:border-box}
 body{
   margin:0; background:var(--felt-edge); color:var(--bone);
+  touch-action:manipulation;   /* no double-tap zoom -- the table keeps its perspective */
   font-family:"Roboto Slab",Georgia,serif; font-size:15px; line-height:1.55;
   padding:20px;
 }
