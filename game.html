@@ -442,6 +442,11 @@ button.sm{padding:6px 12px;font-size:11px}
   cursor:pointer;white-space:nowrap}
 .dinput button:hover{filter:brightness(1.12)}
 .dinput button:disabled{opacity:.4;cursor:not-allowed;filter:none}
+#dealerMic{background:rgba(0,0,0,.4);border:1px solid var(--line);color:var(--bone);
+  padding:0 12px;font-size:14px}
+#dealerMic.listening{background:rgba(201,60,60,.5);border-color:#e07070;
+  animation:micpulse 1.1s ease-in-out infinite}
+@keyframes micpulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.5)}}
 
 /* A real switch reads as a control; a bare checkbox next to text reads as a bug. */
 .dtoggle{display:inline-flex;align-items:center;gap:7px;cursor:pointer;
@@ -500,6 +505,7 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
         <div class="dinput">
           <input id="dealerQ" placeholder="Tell the dealer…"
                  aria-label="Tell the dealer your bet">
+          <button id="dealerMic" hidden aria-label="Speak your bet" title="Speak your bet">🎙</button>
           <button id="dealerGo">Bet it</button>
           <label class="dtoggle" title="Off means no AI calls at all — the dealer and coach go quiet and nothing is billed. Bet tracking and your usual-bet suggestions keep working either way.">
             <span class="dtoggle-text">AI</span>
@@ -710,6 +716,10 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
           <div class="flab" style="margin-top:14px">Table suggestions</div>
           <label class="dsw"><input type="checkbox" id="prefUsual">
             Offer my usual bet on the come-out (free, no AI) — unchecking this is the same as "stop asking"</label>
+          <div class="flab" style="margin-top:14px">Voice</div>
+          <label class="dsw"><input type="checkbox" data-d="voice">
+            Dealer voice — call the rolls like a stickman, speak replies, and listen for your bets
+            (the phone's own voice and mic; roll calls cost nothing)</label>
           <div class="flab" style="margin-top:14px">Dealer behaviour</div>
           <label class="dsw"><input type="checkbox" data-d="speak"> Dealer may speak up on their own</label>
           <div class="dsub" id="dSub">
@@ -1129,6 +1139,7 @@ function roll(){
   offerUsual();
   dealerCall();
   reveal(notes, eq0, `Rolled ${d1}+${d2} = ${n}`);
+  Voice.speak(stickmanCall(d1,d2,was,S.point));
   offerRebet();
 
   // Describe the roll precisely so the coach never has to guess what happened.
@@ -1735,6 +1746,7 @@ const DealerCfg = {
     house: true,          // point out when only house money is riding
     offers: true,         // may offer to place the bet, never places it itself
     aiPatterns: true,     // let the model find patterns instead of fixed rules
+    voice: false,         // call the rolls + speak replies out loud (on-device TTS)
     minRepeat: 3,         // how many times a number must show
     gapSeconds: 20,       // minimum quiet between remarks
   },
@@ -1811,6 +1823,86 @@ const Reader = {
   }
 };
 
+// ---- Voice: the dealer out loud. Roll calls are generated locally (free,
+// instant, authentic stickman patter); only typed/spoken ORDERS go to the AI.
+const Voice = {
+  on(){ return !!DealerCfg.d.voice; },
+  tts(){ return 'speechSynthesis' in window; },
+  speak(text){
+    if(!this.on() || !this.tts() || !text) return;
+    try{
+      speechSynthesis.cancel();
+      const u=new SpeechSynthesisUtterance(text);
+      u.rate=1.06; u.pitch=1.0;
+      speechSynthesis.speak(u);
+    }catch(e){}
+  },
+  // Native (Capacitor) speech recognition, with the browser API as dev fallback.
+  rec(){ return (window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.SpeechRecognition)
+      || window.webkitSpeechRecognition || window.SpeechRecognition || null; },
+  listening:false,
+  async toggleMic(){
+    const btn=$('dealerMic');
+    if(this.listening){ await this._stop(); return; }
+    const P=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.SpeechRecognition;
+    try{
+      if(P){
+        const perm=await P.requestPermissions().catch(()=>null);
+        if(perm && perm.speechRecognition && perm.speechRecognition!=='granted'){
+          flash('Microphone permission is off — enable it in iOS Settings'); return; }
+        if(!this._wired){
+          P.addListener('partialResults', e=>{ const m=(e.matches||[])[0]; if(m) $('dealerQ').value=m; });
+          this._wired=true;
+        }
+        this.listening=true; btn.classList.add('listening');
+        await P.start({language:'en-US', partialResults:true, popup:false});
+      } else {
+        const R=window.webkitSpeechRecognition||window.SpeechRecognition;
+        if(!R){ flash('No speech recognition on this device'); return; }
+        const r=this._webRec=new R();
+        r.interimResults=true; r.lang='en-US';
+        r.onresult=e=>{ $('dealerQ').value=[...e.results].map(x=>x[0].transcript).join(''); };
+        r.onend=()=>{ if(this.listening) this._stop(); };
+        this.listening=true; btn.classList.add('listening');
+        r.start();
+      }
+    }catch(e){ this.listening=false; btn.classList.remove('listening');
+      flash('Could not start listening: '+e.message); }
+  },
+  async _stop(){
+    const btn=$('dealerMic');
+    this.listening=false; btn.classList.remove('listening');
+    try{
+      const P=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.SpeechRecognition;
+      if(P) await P.stop();
+      else if(this._webRec) this._webRec.stop();
+    }catch(e){}
+    const said=$('dealerQ').value.trim();
+    if(said){ $('dealerQ').value=''; tellDealer(said); }
+  },
+};
+
+// The stickman's call for a roll: dice, the point before the roll, the point after.
+function stickmanCall(d1,d2,was,now){
+  const n=d1+d2, hard=(d1===d2);
+  const num={2:'two, aces',3:'three, ace deuce',4:hard?'hard four':'four, easy four',
+    5:'five, no field five',6:hard?'six, the hard way':'six, easy six',
+    7:'seven',8:hard?'eight, the hard way':'eight, easy eight',9:'nine, center field',
+    10:hard?'hard ten':'ten, easy ten',11:'yo-leven',12:'twelve, boxcars'}[n];
+  const cap=s=>s[0].toUpperCase()+s.slice(1);
+  if(!was){
+    if(n===7)  return 'Seven! Winner seven, front line winner!';
+    if(n===11) return 'Yo-leven! Winner on the front line!';
+    if(n===2)  return 'Aces! Craps, line away.';
+    if(n===3)  return 'Craps three, line away.';
+    if(n===12) return 'Boxcars! Craps twelve.';
+    return cap(num)+' — the point is '+n+'. Point is on, place your bets.';
+  }
+  if(n===7)   return "Seven out! Line away, pay the don'ts.";
+  if(n===was) return 'Winner! '+cap(num)+' — pay the line!';
+  return cap(num)+'.';
+}
+
 // ---- AI dealer: speak your bets. The model only PROPOSES; the game validates
 // and executes, so it can never create money or place an illegal bet. ----
 // Dealer replies fade out on their own like table chatter would — anything that
@@ -1863,11 +1955,16 @@ async function tellDealer(said){
   // a real bet rather than a refused or misheard one.
   const placedBets=(out.bets||[]).filter(b=>b.action==='place'&&b.amount>0);
   if(done.length && placedBets.length){ S.lastOrder=said; S.lastBets=placedBets; }
-  dsay(out.say || (done.length?`Bet placed: ${done.join(', ')}`:'Nothing changed.'), '', 6500);
+  const spoken=out.say || (done.length?`Bet placed: ${done.join(', ')}`:'Nothing changed.');
+  dsay(spoken, '', 6500);
+  Voice.speak(spoken);
   if(done.length) logLine(`<b>Dealer</b> ${out.say||''} <span class="ldetail">${done.join(' · ')}</span>`,'');
   render();
 }
 $('dealerGo').onclick=()=>{const i=$('dealerQ');const v=i.value.trim();if(!v)return;i.value='';tellDealer(v);};
+$('dealerMic').onclick=()=>Voice.toggleMic();
+function paintMic(){ $('dealerMic').hidden = !(Voice.on() && Voice.rec()); }
+AI_READY.then(paintMic);
 $('dealerQ').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('dealerGo').click();}});
 
 
@@ -2302,6 +2399,11 @@ renderDbg();
       if(k==='speak') flash(DealerCfg.d.speak
         ? 'The dealer will speak up when something is worth saying'
         : 'The dealer will stay quiet unless you ask');
+      if(k==='voice'){ paintMic();
+        flash(DealerCfg.d.voice
+          ? 'Dealer voice is on — he will call the rolls'
+          : 'Dealer voice is off');
+        if(DealerCfg.d.voice) Voice.speak('Voice is on. New shooter, coming out!'); }
     });
   });
 })();
@@ -2750,6 +2852,7 @@ async function dealerCall(){
 function showDealerCall(text, obs){
   const bar=$('callBar'); if(!bar) return;
   $('callText').textContent=text;
+  Voice.speak(text);
   const btn=$('callTake');
   if(DealerCfg.d.offers && obs.bets && obs.bets.length){
     const cost=obs.bets.reduce((s,b)=>s+b.amount,0);

@@ -26,6 +26,10 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>The dealer listens to your spoken bets when you use the microphone button. Audio is processed by iOS speech recognition and never stored by Pass Line.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Turns your spoken bets into text for the dealer. Nothing is stored by Pass Line.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
