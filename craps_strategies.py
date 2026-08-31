@@ -315,3 +315,77 @@ class CappedFlex(Strategy):
             dc_ct = len(b.dont_come) + (1 if b.dont_come_new else 0)
             if dc_ct < self.n_dc and not b.dont_come_new:
                 b.dont_come_new = self._fund(g, self.unit)
+
+
+class EricLadder(Strategy):
+    """Eric's ladder (sim request 2026-08-31):
+    open: $10 pass + $5 yo. Point set: $75 don't come, $40 pass odds, place
+    every number but the point ($12 on 6/8, $10 elsewhere), then $10 come every
+    roll; a come landing on a placed number takes $10 odds and the place bet
+    comes down ("drag"). If the DC point hits (the DC "drops") or the pass
+    point is made: pull the places and pass odds, everything that cannot come
+    down (comes + odds, the DC) keeps working, sit out to the next come-out
+    and run the opening again."""
+    name = "Eric ladder (pass+yo, DC75, places->comes)"
+
+    def __init__(self, yo=True, place_410=True):
+        self.yo = yo                 # $5 yo ritual on come-out rolls
+        self.place_410 = place_410   # include the 6.67%-edge outside numbers
+        self.paused = False
+        self.opened = False          # this point-cycle's opening bets are up
+        self._prev_point = None
+        self._prev_dc = set()
+        self._sh = None
+
+    def _pull_down(self, g):
+        b = g.bets
+        for n_, amt in list(b.place.items()):
+            g.collect(amt); del b.place[n_]
+        if b.pass_odds:
+            g.collect(b.pass_odds); b.pass_odds = 0
+        self.paused = True
+
+    def place_bets(self, g):
+        b = g.bets
+        if self._sh != g.shooters:              # new shooter: fresh cycle
+            self._sh, self.paused = g.shooters, False
+            self._prev_point, self._prev_dc = None, set()
+
+        # ---- detect last roll's events (same shooter) ----
+        point_made = self._prev_point and g.t.point is None
+        dc_dropped = any(d not in b.dont_come for d in self._prev_dc)
+        if (point_made or dc_dropped) and not self.paused:
+            self._pull_down(g)
+        self._prev_point = g.t.point
+        self._prev_dc = set(b.dont_come)
+
+        if g.t.is_comeout:
+            self.paused = False                  # the opening runs again
+            self.opened = False
+            if not b.pass_line:
+                b.pass_line = g.wager(10)
+            if self.yo:
+                b.props["yo"] = b.props.get("yo", 0) or g.wager(5)
+            return
+        if self.paused:
+            return
+
+        # ---- point is on, machine running ----
+        pt = g.t.point
+        if not self.opened:
+            self.opened = True
+            b.pass_odds = g.wager(40)
+            b.dont_come_new = g.wager(75)
+            nums = (4, 5, 6, 8, 9, 10) if self.place_410 else (5, 6, 8, 9)
+            for n_ in nums:
+                if n_ != pt and n_ not in b.place and n_ not in b.come:
+                    b.place[n_] = g.wager(12 if n_ in (6, 8) else 10)
+        # comes that landed on placed numbers: odds up, place down (drag)
+        for n_ in list(b.come):
+            if not b.come_odds.get(n_):
+                b.come_odds[n_] = g.wager(10)
+            if n_ in b.place:
+                g.collect(b.place.pop(n_))
+        # $10 come every roll
+        if not b.come_new:
+            b.come_new = g.wager(10)
