@@ -20,3 +20,4 @@ android/local.properties
 __pycache__/
 *.pyc
 results.json
+store/voice-samples/
