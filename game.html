@@ -721,14 +721,17 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
           <label class="dsw"><input type="checkbox" data-d="voice">
             Dealer voice — call the rolls like a stickman, speak replies, and listen for your bets
             (the phone's own voice and mic; roll calls cost nothing)</label>
+          <label class="dsw"><input type="checkbox" data-d="voiceReplies">
+            Also read his replies and table remarks aloud (the phone's voice — the recorded
+            dealer only covers roll calls, so this is a second voice)</label>
           <div class="drow">
-            <label class="flab" style="margin:0">Dealer's voice</label>
+            <label class="flab" style="margin:0">Phone voice</label>
             <select id="voicePick" class="fsel small"><option value="auto">Auto (best installed)</option></select>
           </div>
-          <p class="hint">Roll calls use the dealer's own recorded voice, built in.
-          The voice above covers everything else he says (replies, remarks). For a better
-          one, download a Premium voice free from iOS Settings → Accessibility →
-          Spoken Content → Voices → English, then pick it here.</p>
+          <p class="hint">Roll calls always use the dealer's own recorded voice, built in.
+          If you turn on spoken replies, they use the phone voice above — Premium voices
+          (free: iOS Settings → Accessibility → Spoken Content → Voices → English) sound far
+          better than the default.</p>
           <div class="flab" style="margin-top:14px">Dealer behaviour</div>
           <label class="dsw"><input type="checkbox" data-d="speak"> Dealer may speak up on their own</label>
           <div class="dsub" id="dSub">
@@ -1833,7 +1836,8 @@ const DealerCfg = {
     house: true,          // point out when only house money is riding
     offers: true,         // may offer to place the bet, never places it itself
     aiPatterns: true,     // let the model find patterns instead of fixed rules
-    voice: false,         // call the rolls + speak replies out loud (on-device TTS)
+    voice: false,         // dealer voice: recorded roll calls (and the mic button)
+    voiceReplies: false,  // ALSO read free-form replies/remarks with the phone's TTS
     voiceURI: 'auto',     // which system voice; 'auto' picks the best installed
     minRepeat: 3,         // how many times a number must show
     gapSeconds: 20,       // minimum quiet between remarks
@@ -1940,13 +1944,14 @@ const Voice = {
     if(a){ try{
       if(this._playing){ this._playing.pause(); this._playing.currentTime=0; }
       this._playing=a; a.currentTime=0;
-      a.play().catch(()=>this.speak(c.text));
+      a.play().catch(()=>this.speak(c.text, true));
       return;
     }catch(e){} }
     this.speak(c.text);
   },
-  speak(text){
+  speak(text, force){
     if(!this.on() || !this.tts() || !text) return;
+    if(!force && !DealerCfg.d.voiceReplies) return;   // one dealer, one voice
     try{
       speechSynthesis.cancel();
       const u=new SpeechSynthesisUtterance(text);
@@ -2098,7 +2103,7 @@ if('speechSynthesis' in window){
   $('voicePick').addEventListener('change', async e=>{
     DealerCfg.d.voiceURI=e.target.value; await DealerCfg.save();
     const wasOn=DealerCfg.d.voice; DealerCfg.d.voice=true;
-    Voice.speak('Coming out! Place your bets.');
+    Voice.speak('Coming out! Place your bets.', true);
     DealerCfg.d.voice=wasOn;
   });
 }
