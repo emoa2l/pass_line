@@ -704,6 +704,9 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
         <p class="hint" id="aiHint"></p>
         </div>
         <div class="dsettings" id="dealerSettings">
+          <div class="flab" style="margin-top:14px">Table suggestions</div>
+          <label class="dsw"><input type="checkbox" id="prefUsual">
+            Offer my usual bet on the come-out (free, no AI) — unchecking this is the same as "stop asking"</label>
           <div class="flab" style="margin-top:14px">Dealer behaviour</div>
           <label class="dsw"><input type="checkbox" data-d="speak"> Dealer may speak up on their own</label>
           <div class="dsub" id="dSub">
@@ -1291,6 +1294,11 @@ An "auto" line means a win was re-bet by your standing choice. A DRIFT line is a
   the previous shooter's win paid for it a moment earlier.
 
 INVARIANT checked every roll: (from your rack) + (house money pressed) == (on the felt)
+
+"YOUR USUAL" BAR (come-out only): a free, local pattern-reader — no AI call. It
+counts how often the same opening bets were placed ("seen N×") and offers to set
+them up. "Stop asking" hides it; it comes back only via Preferences → Table
+suggestions. It never appears mid-hand or when the AI dealer is doing patterns.
 `;
 
 const COACH_SYSTEM = `You are a craps coach standing next to a player at the table.
@@ -2577,10 +2585,12 @@ function setPrompt(on){
   S.promptOff = !on;
   try{ localStorage.setItem('craps.promptOff', S.promptOff?'1':''); }catch(err){}
   const b=$('usualNever'); if(b) b.checked = !on;
+  const pb=$('prefUsual'); if(pb) pb.checked = on;
   if(!on) $('usualBar').hidden=true; else offerUsual();
 }
 document.getElementById('aiEnabled').onchange=e=>setAI(e.target.checked);
 document.getElementById('usualNever').onchange=e=>setPrompt(!e.target.checked);
+document.getElementById('prefUsual').onchange=e=>setPrompt(e.target.checked);
 document.getElementById('rbClear').onclick=()=>{S.rebet='ask';showStanding();flash('I will ask after each win');};
 ['Same','Press','Regress','Down'].forEach(k=>{
   document.getElementById('rb'+k).onclick=()=>{
@@ -2839,6 +2849,7 @@ try{ S.aiOff=!!localStorage.getItem('craps.aiOff');
      S.promptOff=!!localStorage.getItem('craps.promptOff'); }catch(e){}
 document.getElementById('aiEnabled').checked=!S.aiOff;
 document.getElementById('usualNever').checked=S.promptOff;
+document.getElementById('prefUsual').checked=!S.promptOff;
 if(S.aiOff) setAI(false);
 build();drawDie($('d1'),3);drawDie($('d2'),4);render();renderSessions();offerUsual();
 // Every dev session is traced from the first roll: a reported bug should always

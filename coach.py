@@ -74,6 +74,11 @@ SESSIONS
 
 INVARIANT the table checks every roll:
   (from your rack) + (house money pressed) == (money on the felt)
+
+"YOUR USUAL" BAR (come-out only): a free, local pattern-reader -- no AI call. It
+counts how often the same opening bets were placed ("seen N times") and offers to
+set them up. "Stop asking" hides it; it comes back only via Preferences -> Table
+suggestions. It never appears mid-hand or when the AI dealer is doing patterns.
 """
 
 SYSTEM = """You are a craps coach standing next to a player at the table.
