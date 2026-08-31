@@ -328,9 +328,10 @@ class EricLadder(Strategy):
     and run the opening again."""
     name = "Eric ladder (pass+yo, DC75, places->comes)"
 
-    def __init__(self, yo=True, place_410=True):
+    def __init__(self, yo=True, place_410=True, dc=75):
         self.yo = yo                 # $5 yo ritual on come-out rolls
         self.place_410 = place_410   # include the 6.67%-edge outside numbers
+        self.dc = dc                 # don't-come size
         self.paused = False
         self.opened = False          # this point-cycle's opening bets are up
         self._prev_point = None
@@ -375,7 +376,7 @@ class EricLadder(Strategy):
         if not self.opened:
             self.opened = True
             b.pass_odds = g.wager(40)
-            b.dont_come_new = g.wager(75)
+            b.dont_come_new = g.wager(self.dc)
             nums = (4, 5, 6, 8, 9, 10) if self.place_410 else (5, 6, 8, 9)
             for n_ in nums:
                 if n_ != pt and n_ not in b.place and n_ not in b.come:
