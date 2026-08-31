@@ -210,3 +210,108 @@ ALL = [
     Martingale(),
     AnySeven(),
 ]
+
+
+# ---------------------------------------------------------------- ERIC'S 2+2
+class ComeDontComeCapped(Strategy):
+    """$25 pass on the come-out, then keep 2 come AND 2 don't-come points
+    working (come side first), funded by at most $100 of fresh bankroll per
+    shooter -- money returned during the shooter (stakes back, winnings) is
+    re-bettable without touching the cap, like the app's stake meter."""
+    name = "25 pass + 2 come + 2 DC ($100 fresh/shooter)"
+    desc = "Both sides of the come, capped at $100 new money per shooter."
+
+    def __init__(self, unit=25, cap=100):
+        self.unit, self.cap = unit, cap
+        self._sh = None
+        self._base = 0     # bankroll when this shooter started
+        self._fresh = 0    # new money out of the rack this shooter
+
+    def _fund(self, g, amt):
+        if amt > g.bankroll:
+            return 0
+        # Anything above (base - fresh spent) is money that came back this
+        # shooter; it funds bets before fresh money does.
+        pool = g.bankroll - (self._base - self._fresh)
+        fresh_needed = max(0, amt - max(0, pool))
+        if self._fresh + fresh_needed > self.cap:
+            return 0
+        w = g.wager(amt)
+        self._fresh += fresh_needed
+        return w
+
+    def place_bets(self, g):
+        if self._sh != g.shooters:
+            self._sh, self._base, self._fresh = g.shooters, g.bankroll, 0
+        b = g.bets
+        if g.t.is_comeout:
+            if not b.pass_line:
+                b.pass_line = self._fund(g, self.unit)
+            return
+        come_ct = len(b.come) + (1 if b.come_new else 0)
+        if come_ct < 2 and not b.come_new:
+            b.come_new = self._fund(g, self.unit)
+            if b.come_new:
+                come_ct += 1
+        if come_ct >= 2:
+            dc_ct = len(b.dont_come) + (1 if b.dont_come_new else 0)
+            if dc_ct < 2 and not b.dont_come_new:
+                b.dont_come_new = self._fund(g, self.unit)
+
+
+class CappedFlex(Strategy):
+    """Parameterized capped strategy for sweeps: pass (+odds), n come (+odds),
+    n don't-come (+lay), all funded returns-first with a fresh-money cap per
+    shooter (see ComeDontComeCapped for the funding rule)."""
+    def __init__(self, unit=25, cap=100, n_come=2, n_dc=2,
+                 come_odds=0, pass_odds=0, dc_lay=0):
+        self.unit, self.cap = unit, cap
+        self.n_come, self.n_dc = n_come, n_dc
+        self.come_odds, self.pass_odds, self.dc_lay = come_odds, pass_odds, dc_lay
+        self.name = (f"{unit} pass{'+'+str(pass_odds)+'xO' if pass_odds else ''}"
+                     f" {n_come}come{'+'+str(come_odds)+'xO' if come_odds else ''}"
+                     f" {n_dc}dc{'+'+str(dc_lay)+'xL' if dc_lay else ''} cap{cap}")
+        self._sh = None; self._base = 0; self._fresh = 0
+
+    def _fund(self, g, amt):
+        if amt <= 0 or amt > g.bankroll:
+            return 0
+        pool = g.bankroll - (self._base - self._fresh)
+        fresh_needed = max(0, amt - max(0, pool))
+        if self._fresh + fresh_needed > self.cap:
+            return 0
+        w = g.wager(amt)
+        self._fresh += fresh_needed
+        return w
+
+    def place_bets(self, g):
+        from craps_engine import ODDS_PAY
+        if self._sh != g.shooters:
+            self._sh, self._base, self._fresh = g.shooters, g.bankroll, 0
+        b = g.bets
+        if g.t.is_comeout:
+            if not b.pass_line:
+                b.pass_line = self._fund(g, self.unit)
+            return
+        if self.pass_odds and b.pass_line and not b.pass_odds:
+            b.pass_odds = self._fund(g, self.unit * self.pass_odds)
+        # odds behind established come points first (cheapest edge on the felt)
+        if self.come_odds:
+            for pt in list(b.come):
+                if not b.come_odds.get(pt):
+                    o = self._fund(g, self.unit * self.come_odds)
+                    if o: b.come_odds[pt] = o
+        if self.dc_lay:
+            for pt in list(b.dont_come):
+                if not b.dont_come_odds.get(pt):
+                    n_, d_ = ODDS_PAY[pt]
+                    o = self._fund(g, self.unit * self.dc_lay * n_ // d_)
+                    if o: b.dont_come_odds[pt] = o
+        come_ct = len(b.come) + (1 if b.come_new else 0)
+        if come_ct < self.n_come and not b.come_new:
+            b.come_new = self._fund(g, self.unit)
+            if b.come_new: come_ct += 1
+        if come_ct >= self.n_come:
+            dc_ct = len(b.dont_come) + (1 if b.dont_come_new else 0)
+            if dc_ct < self.n_dc and not b.dont_come_new:
+                b.dont_come_new = self._fund(g, self.unit)
