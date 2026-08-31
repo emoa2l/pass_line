@@ -2,9 +2,9 @@
   "name": "passline",
   "version": "0.1.0",
   "private": true,
-  "description": "Pass Line — a play-money craps trainer",
+  "description": "Pass Line \u2014 a play-money craps trainer",
   "scripts": {
-    "bundle": "rm -rf dist && mkdir dist && cp game.html dist/index.html && cp manifest.webmanifest sw.js icon-192.png icon-512.png dist/",
+    "bundle": "rm -rf dist && mkdir dist && cp game.html dist/index.html && cp manifest.webmanifest sw.js icon-192.png icon-512.png dist/ && cp -R voice dist/voice",
     "sync": "npm run bundle && npx cap sync"
   },
   "dependencies": {

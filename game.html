@@ -724,9 +724,10 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
             <label class="flab" style="margin:0">Dealer's voice</label>
             <select id="voicePick" class="fsel small"><option value="auto">Auto (best installed)</option></select>
           </div>
-          <p class="hint">For a far better voice, download one free from iOS Settings →
-          Accessibility → Spoken Content → Voices → English (the Premium and Enhanced ones),
-          then pick it here. A test line plays when you change it.</p>
+          <p class="hint">Roll calls use the dealer's own recorded voice, built in.
+          The voice above covers everything else he says (replies, remarks). For a better
+          one, download a Premium voice free from iOS Settings → Accessibility →
+          Spoken Content → Voices → English, then pick it here.</p>
           <div class="flab" style="margin-top:14px">Dealer behaviour</div>
           <label class="dsw"><input type="checkbox" data-d="speak"> Dealer may speak up on their own</label>
           <div class="dsub" id="dSub">
@@ -1146,7 +1147,7 @@ function roll(){
   offerUsual();
   dealerCall();
   reveal(notes, eq0, `Rolled ${d1}+${d2} = ${n}`);
-  Voice.speak(stickmanCall(d1,d2,was,S.point));
+  Voice.call(stickmanCall(d1,d2,was,S.point));
   offerRebet();
 
   // Describe the roll precisely so the coach never has to guess what happened.
@@ -1848,6 +1849,23 @@ const Voice = {
         || vs.find(v=>/enhanced/i.test(v.name+v.voiceURI))
         || vs.find(v=>v.lang==='en-US') || vs[0];
   },
+  _clips:{},
+  call(c){                      // c = {key,text} from stickmanCall
+    if(!this.on() || !c) return;
+    let a=this._clips[c.key];
+    if(a===undefined){
+      a=new Audio('voice/'+c.key+'.mp3');
+      a.onerror=()=>{ this._clips[c.key]=null; };   // missing clip -> TTS next time
+      this._clips[c.key]=a;
+    }
+    if(a){ try{
+      if(this._playing){ this._playing.pause(); this._playing.currentTime=0; }
+      this._playing=a; a.currentTime=0;
+      a.play().catch(()=>this.speak(c.text));
+      return;
+    }catch(e){} }
+    this.speak(c.text);
+  },
   speak(text){
     if(!this.on() || !this.tts() || !text) return;
     try{
@@ -1903,25 +1921,28 @@ const Voice = {
   },
 };
 
-// The stickman's call for a roll: dice, the point before the roll, the point after.
+// The stickman's call for a roll: dice, the point before the roll, the point
+// after. Returns {key,text}: key names a clip in the baked-in voice pack
+// (voice/<key>.mp3, recorded once, ships with the app); text is the same line
+// for the device-TTS fallback when a clip cannot play.
 function stickmanCall(d1,d2,was,now){
-  const n=d1+d2, hard=(d1===d2);
+  const n=d1+d2, hard=(d1===d2), suf=n+(hard?'h':'e');
   const num={2:'two, aces',3:'three, ace deuce',4:hard?'hard four':'four, easy four',
     5:'five, no field five',6:hard?'six, the hard way':'six, easy six',
     7:'seven',8:hard?'eight, the hard way':'eight, easy eight',9:'nine, center field',
     10:hard?'hard ten':'ten, easy ten',11:'yo-leven',12:'twelve, boxcars'}[n];
   const cap=s=>s[0].toUpperCase()+s.slice(1);
   if(!was){
-    if(n===7)  return 'Seven! Winner seven, front line winner!';
-    if(n===11) return 'Yo-leven! Winner on the front line!';
-    if(n===2)  return 'Aces! Craps, line away.';
-    if(n===3)  return 'Craps three, line away.';
-    if(n===12) return 'Boxcars! Craps twelve.';
-    return cap(num)+' — the point is '+n+'. Point is on, place your bets.';
+    if(n===7)  return {key:'co7',  text:'Seven! Winner seven, front line winner!'};
+    if(n===11) return {key:'co11', text:'Yo-leven! Winner on the front line!'};
+    if(n===2)  return {key:'co2',  text:'Aces! Craps, line away.'};
+    if(n===3)  return {key:'co3',  text:'Craps three, line away.'};
+    if(n===12) return {key:'co12', text:'Boxcars! Craps twelve.'};
+    return {key:'point'+suf, text:cap(num)+' — the point is '+n+'. Point is on, place your bets.'};
   }
-  if(n===7)   return "Seven out! Line away, pay the don'ts.";
-  if(n===was) return 'Winner! '+cap(num)+' — pay the line!';
-  return cap(num)+'.';
+  if(n===7)   return {key:'out7', text:"Seven out! Line away, pay the don'ts."};
+  if(n===was) return {key:'win'+suf, text:'Winner! '+cap(num)+' — pay the line!'};
+  return {key:'num'+suf, text:cap(num)+'.'};
 }
 
 // ---- AI dealer: speak your bets. The model only PROPOSES; the game validates
@@ -2442,7 +2463,7 @@ renderDbg();
         flash(DealerCfg.d.voice
           ? 'Dealer voice is on — he will call the rolls'
           : 'Dealer voice is off');
-        if(DealerCfg.d.voice) Voice.speak('Voice is on. New shooter, coming out!'); }
+        if(DealerCfg.d.voice) Voice.call({key:'co11', text:'Yo-leven! Winner on the front line!'}); }
     });
   });
 })();
