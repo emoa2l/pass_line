@@ -720,6 +720,13 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
           <label class="dsw"><input type="checkbox" data-d="voice">
             Dealer voice — call the rolls like a stickman, speak replies, and listen for your bets
             (the phone's own voice and mic; roll calls cost nothing)</label>
+          <div class="drow">
+            <label class="flab" style="margin:0">Dealer's voice</label>
+            <select id="voicePick" class="fsel small"><option value="auto">Auto (best installed)</option></select>
+          </div>
+          <p class="hint">For a far better voice, download one free from iOS Settings →
+          Accessibility → Spoken Content → Voices → English (the Premium and Enhanced ones),
+          then pick it here. A test line plays when you change it.</p>
           <div class="flab" style="margin-top:14px">Dealer behaviour</div>
           <label class="dsw"><input type="checkbox" data-d="speak"> Dealer may speak up on their own</label>
           <div class="dsub" id="dSub">
@@ -1747,6 +1754,7 @@ const DealerCfg = {
     offers: true,         // may offer to place the bet, never places it itself
     aiPatterns: true,     // let the model find patterns instead of fixed rules
     voice: false,         // call the rolls + speak replies out loud (on-device TTS)
+    voiceURI: 'auto',     // which system voice; 'auto' picks the best installed
     minRepeat: 3,         // how many times a number must show
     gapSeconds: 20,       // minimum quiet between remarks
   },
@@ -1828,12 +1836,25 @@ const Reader = {
 const Voice = {
   on(){ return !!DealerCfg.d.voice; },
   tts(){ return 'speechSynthesis' in window; },
+  // Best installed voice wins: user's pick, else Premium > Enhanced > any en-US.
+  // (iOS ships premium voices free -- Settings > Accessibility > Spoken Content
+  //  > Voices -- and they appear here once downloaded.)
+  best(){
+    const vs=speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang));
+    if(!vs.length) return null;
+    const uri=DealerCfg.d.voiceURI;
+    if(uri && uri!=='auto'){ const v=vs.find(v=>v.voiceURI===uri); if(v) return v; }
+    return vs.find(v=>/premium/i.test(v.name+v.voiceURI))
+        || vs.find(v=>/enhanced/i.test(v.name+v.voiceURI))
+        || vs.find(v=>v.lang==='en-US') || vs[0];
+  },
   speak(text){
     if(!this.on() || !this.tts() || !text) return;
     try{
       speechSynthesis.cancel();
       const u=new SpeechSynthesisUtterance(text);
-      u.rate=1.06; u.pitch=1.0;
+      const v=this.best(); if(v) u.voice=v;
+      u.rate=1.02; u.pitch=1.0;
       speechSynthesis.speak(u);
     }catch(e){}
   },
@@ -1963,6 +1984,24 @@ async function tellDealer(said){
 }
 $('dealerGo').onclick=()=>{const i=$('dealerQ');const v=i.value.trim();if(!v)return;i.value='';tellDealer(v);};
 $('dealerMic').onclick=()=>Voice.toggleMic();
+function paintVoices(){
+  const sel=$('voicePick'); if(!sel || !Voice.tts()) return;
+  const cur=DealerCfg.d.voiceURI||'auto';
+  const vs=speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang));
+  sel.innerHTML='<option value="auto">Auto (best installed)</option>'
+    + vs.map(v=>`<option value="${v.voiceURI}">${v.name}${/premium/i.test(v.name)?'':/enhanced/i.test(v.name)?'':''} (${v.lang})</option>`).join('');
+  sel.value=[...sel.options].some(o=>o.value===cur)?cur:'auto';
+}
+if('speechSynthesis' in window){
+  paintVoices();
+  speechSynthesis.addEventListener('voiceschanged', paintVoices);
+  $('voicePick').addEventListener('change', async e=>{
+    DealerCfg.d.voiceURI=e.target.value; await DealerCfg.save();
+    const wasOn=DealerCfg.d.voice; DealerCfg.d.voice=true;
+    Voice.speak('Coming out! Place your bets.');
+    DealerCfg.d.voice=wasOn;
+  });
+}
 function paintMic(){ $('dealerMic').hidden = !(Voice.on() && Voice.rec()); }
 AI_READY.then(paintMic);
 $('dealerQ').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('dealerGo').click();}});
