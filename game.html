@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0B5D3B">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -99,6 +99,8 @@ h1,h2,h3,.lab,button{font-family:Oswald,"Arial Narrow",sans-serif}
 .r3{grid-template-columns:repeat(3,1fr)}
 .bet{
   position:relative;border:2px solid var(--line);border-radius:6px;
+  -webkit-touch-callout:none;-webkit-user-select:none;user-select:none;
+  touch-action:manipulation;
   padding:9px 6px; text-align:center; cursor:pointer; background:rgba(0,0,0,.14);
   transition:border-color .15s, background .15s, transform .1s;
   min-height:70px; padding-bottom:16px; display:flex;flex-direction:column;justify-content:center;gap:2px;
@@ -842,21 +844,22 @@ function mk(id,title,sub){
   const d=document.createElement('div');d.className='bet';d.id='b_'+id;d.tabIndex=0;
   d.setAttribute('role','button');d.setAttribute('aria-label',title+' '+sub);
   d.innerHTML=`<div class="t">${title}</div><div class="o">${sub}</div>`;
-  const go=()=>place(id);
+  const go=()=>{ if(d._lpFired){ d._lpFired=false; return; } place(id); };
   d.onclick=go;
-  // Right-click / long-press toggles a place number between working and off.
+  // Right-click / long-press / tapping the badge toggles working <-> off.
   if(id.startsWith('place')){
     const num=id.slice(5);
-    const toggle=e=>{e.preventDefault();
-      // The toggle is an INTENT and always sticks -- refusing it while no bet is
-      // up left later bets silently off (issue #26: paid nothing on the open).
-      S.working[num]=!S.working[num];
-      flash(`The ${num} is ${S.working[num]?'WORKING on the come-out':'off on the come-out'}`
-        + (S.bets.place[num]?'':' — it will apply when you bet it'));
-      render();};
+    const toggle=e=>{if(e&&e.preventDefault)e.preventDefault();toggleWorking(num);};
     d.oncontextmenu=toggle;
-    let lp; d.addEventListener('touchstart',e=>{lp=setTimeout(()=>toggle(e),450)},{passive:true});
-    ['touchend','touchmove','touchcancel'].forEach(ev=>d.addEventListener(ev,()=>clearTimeout(lp)));
+    // A finger is never perfectly still: cancel the long-press only on real
+    // movement (>12px), and swallow the click that iOS fires on release so the
+    // hold does not also place a bet.
+    let lp,sx,sy;
+    d.addEventListener('touchstart',e=>{const t=e.touches[0];sx=t.clientX;sy=t.clientY;
+      lp=setTimeout(()=>{d._lpFired=true;toggle(e);},450)},{passive:true});
+    d.addEventListener('touchmove',e=>{const t=e.touches[0];
+      if(Math.hypot(t.clientX-sx,t.clientY-sy)>12)clearTimeout(lp)},{passive:true});
+    ['touchend','touchcancel'].forEach(ev=>d.addEventListener(ev,()=>clearTimeout(lp)));
     d.onkeydown=e=>{
       if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}
       if(e.key==='w'||e.key==='W'){toggle(e);}};
@@ -864,6 +867,28 @@ function mk(id,title,sub){
     d.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}};
   }
   return d;
+}
+
+// The toggle is an INTENT and always sticks -- refusing it while no bet is
+// up left later bets silently off (issue #26: paid nothing on the open).
+// Tri-state per number: true = always working (come-out included), 'off' =
+// called off (point included), unset = table default (on with a point, off on
+// the come-out). Real craps lets you call a place bet off any time, so the
+// toggle flips whatever the bet is currently doing, in either phase.
+function placeIsWorking(p){
+  return S.working[p]===true || (S.working[p]!=='off' && !!S.point);
+}
+function toggleWorking(num){
+  const was=placeIsWorking(num);
+  if(was){ S.working[num] = S.point ? 'off' : undefined; }
+  else   { S.working[num] = S.point ? undefined : true; }
+  DBG.log('working',{num, on:S.working[num]});
+  const now=placeIsWorking(num);
+  flash(`The ${num} is ${now
+      ? (S.point?'WORKING':'WORKING on the come-out')
+      : (S.point?'called OFF — it can neither win nor lose':'off on the come-out')}`
+    + (S.bets.place[num]?'':' — it will apply when you bet it'));
+  render();
 }
 
 function place(id){
@@ -1001,10 +1026,9 @@ function roll(){
     else if([2,3,12].includes(n)){retire(a);notes.push(`come −$${a}`);b.comeNew=0;}
     else{b.come[n]=(b.come[n]||0)+a;b.comeNew=0;notes.push(`come travels to ${n}`);}}
 
-  // place bets — OFF on the come-out
-  // A place bet works if the point is on, or if the player has turned that
-  // number ON for the come-out. Off bets can neither win nor lose.
-  const isWorking=p=>!!S.point||!!S.working[p];
+  // place bets — OFF on the come-out by default, and a number called 'off'
+  // stays off even with the point on. Off bets can neither win nor lose.
+  const isWorking=p=>placeIsWorking(p);
   if(n===7){
     for(const p in b.place){
       if(isWorking(p)){retire(b.place[p]);notes.push(`place ${p} −$${b.place[p]}`);delete b.place[p];}
@@ -1189,15 +1213,18 @@ function render(){
   [4,5,6,8,9,10].forEach(n=>{
     const e=$('b_place'+n); if(!e)return;
     if(!b.place[n]){
-      // No chips down, but the number is armed to work: show the intent faintly.
-      if(S.working[n] && !S.point){
+      // No chips down, but an override is armed: show the intent faintly.
+      const armed = (S.working[n]===true && !S.point) ? 'WORKING'
+                  : (S.working[n]==='off' && S.point) ? 'OFF' : null;
+      if(armed){
         const m=document.createElement('div');
-        m.className='mark onmark armed'; m.textContent='WORKING';
+        m.className='mark armed '+(armed==='WORKING'?'onmark':'offmark');
+        m.textContent=armed;
         e.appendChild(m);
       }
       return;
     }
-    const on=!!S.point||!!S.working[n];
+    const on=placeIsWorking(n);
     const m=document.createElement('div');
     m.className='mark '+(on?'onmark':'offmark');
     m.textContent=on?'WORKING':'OFF';
@@ -1299,9 +1326,11 @@ An "auto" line means a win was re-bet by your standing choice. A DRIFT line is a
 
 INVARIANT checked every roll: (from your rack) + (house money pressed) == (on the felt)
 
-WORKING TOGGLE: only place bets have one (off on the come-out by default; long-press
-to toggle). The field, hardways and props are one-roll or always-on bets — they have
-no off state, which is why long-pressing them does nothing.
+WORKING TOGGLE: only place bets have one. Long-press (or right-click / W) flips what
+the bet is currently doing: on the come-out it arms or disarms working; with the
+point on it calls the bet OFF or back on. An off bet can neither win nor lose and
+is not taken by a seven-out. The field, hardways and props are one-roll or
+always-on bets — they have no off state, which is why long-pressing them does nothing.
 
 "YOUR USUAL" BAR (come-out only): a free, local pattern-reader — no AI call. It
 counts how often the same opening bets were placed ("seen N×") and offers to set
@@ -1360,7 +1389,7 @@ function describeTable(extra){
   add("don't pass",b.dont,'dont'); add('come',b.comeNew,'come'); add("don't come",b.dcNew,'dc');
   for(const n in b.come) add(`come on ${n}`,b.come[n],'come');
   for(const n in b.dc) add(`don't come on ${n}`,b.dc[n],'dc');
-  for(const n in b.place) add(`place ${n}`,b.place[n],'place'+n);
+  for(const n in b.place) add(`place ${n}${placeIsWorking(n)?'':' (OFF — not working)'}`,b.place[n],'place'+n);
   add('field',b.field,'field');
   for(const h in b.hard) add(`hard ${h}`,b.hard[h],'hard'+h);
   for(const k in b.prop) add(k,b.prop[k],k);
@@ -1825,7 +1854,8 @@ async function tellDealer(said){
       else if(b.bet==='field'&&S.bets.field){ refund(S.bets.field, true); S.bets.field=0; done.push('took down the field'); }
     } else if(b.action==='working'||b.action==='off'){
       const n=b.bet.startsWith('place')?b.bet.slice(5):null;
-      if(n){ S.working[n]=(b.action==='working'); done.push(`${n} ${b.action}`); }
+      if(n){ S.working[n]=(b.action==='working')?true:'off';
+        DBG.log('working',{num:n, on:S.working[n]}); done.push(`${n} ${b.action}`); }
     }
   });
   // Remember this order only if something actually landed, so "same bet" repeats

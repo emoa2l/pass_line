@@ -75,9 +75,11 @@ SESSIONS
 INVARIANT the table checks every roll:
   (from your rack) + (house money pressed) == (money on the felt)
 
-WORKING TOGGLE: only place bets have one (off on the come-out by default; long-press
-to toggle). The field, hardways and props are one-roll or always-on bets -- they have
-no off state, which is why long-pressing them does nothing.
+WORKING TOGGLE: only place bets have one. Long-press (or right-click / W) flips what
+the bet is currently doing: on the come-out it arms or disarms working; with the
+point on it calls the bet OFF or back on. An off bet can neither win nor lose and
+is not taken by a seven-out. The field, hardways and props are one-roll or
+always-on bets -- they have no off state, which is why long-pressing them does nothing.
 
 "YOUR USUAL" BAR (come-out only): a free, local pattern-reader -- no AI call. It
 counts how often the same opening bets were placed ("seen N times") and offers to
