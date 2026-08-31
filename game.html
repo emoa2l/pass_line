@@ -859,7 +859,11 @@ function mk(id,title,sub){
   const d=document.createElement('div');d.className='bet';d.id='b_'+id;d.tabIndex=0;
   d.setAttribute('role','button');d.setAttribute('aria-label',title+' '+sub);
   d.innerHTML=`<div class="t">${title}</div><div class="o">${sub}</div>`;
-  const go=()=>{ if(d._lpFired){ d._lpFired=false; return; } place(id); };
+  // A long-press must never also bet: ignore clicks in a window after the
+  // toggle fires (iOS sends zero, one, or occasionally two synthetic clicks
+  // after a hold — a one-shot flag either misses the extras or eats the
+  // player's NEXT real tap when none arrive).
+  const go=()=>{ if(d._lpAt && Date.now()-d._lpAt<700) return; place(id); };
   d.onclick=go;
   // Right-click / long-press / tapping the badge toggles working <-> off.
   if(id.startsWith('place')){
@@ -869,12 +873,18 @@ function mk(id,title,sub){
     // A finger is never perfectly still: cancel the long-press only on real
     // movement (>12px), and swallow the click that iOS fires on release so the
     // hold does not also place a bet.
-    let lp,sx,sy;
+    let lp,sx,sy,lpFired=false;
     d.addEventListener('touchstart',e=>{const t=e.touches[0];sx=t.clientX;sy=t.clientY;
-      lp=setTimeout(()=>{d._lpFired=true;toggle(e);},450)},{passive:true});
+      lpFired=false;
+      lp=setTimeout(()=>{lpFired=true;d._lpAt=Date.now();toggle(e);},450)},{passive:true});
     d.addEventListener('touchmove',e=>{const t=e.touches[0];
       if(Math.hypot(t.clientX-sx,t.clientY-sy)>12)clearTimeout(lp)},{passive:true});
-    ['touchend','touchcancel'].forEach(ev=>d.addEventListener(ev,()=>clearTimeout(lp)));
+    ['touchend','touchcancel'].forEach(ev=>d.addEventListener(ev,e=>{
+      clearTimeout(lp);
+      // The toggle already happened on this touch: kill the synthetic click
+      // at the source where the browser allows it.
+      if(lpFired && e.cancelable) e.preventDefault();
+    }));
     d.onkeydown=e=>{
       if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}
       if(e.key==='w'||e.key==='W'){toggle(e);}};
