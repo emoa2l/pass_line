@@ -721,17 +721,8 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
           <label class="dsw"><input type="checkbox" data-d="voice">
             Dealer voice — call the rolls like a stickman, speak replies, and listen for your bets
             (the phone's own voice and mic; roll calls cost nothing)</label>
-          <label class="dsw"><input type="checkbox" data-d="voiceReplies">
-            Also read his replies and table remarks aloud (the phone's voice — the recorded
-            dealer only covers roll calls, so this is a second voice)</label>
-          <div class="drow">
-            <label class="flab" style="margin:0">Phone voice</label>
-            <select id="voicePick" class="fsel small"><option value="auto">Auto (best installed)</option></select>
-          </div>
-          <p class="hint">Roll calls always use the dealer's own recorded voice, built in.
-          If you turn on spoken replies, they use the phone voice above — Premium voices
-          (free: iOS Settings → Accessibility → Spoken Content → Voices → English) sound far
-          better than the default.</p>
+          <p class="hint">Roll calls use the dealer's own recorded voice, built in.
+          His replies and table remarks appear as text on the felt.</p>
           <div class="flab" style="margin-top:14px">Dealer behaviour</div>
           <label class="dsw"><input type="checkbox" data-d="speak"> Dealer may speak up on their own</label>
           <div class="dsub" id="dSub">
@@ -1836,9 +1827,7 @@ const DealerCfg = {
     house: true,          // point out when only house money is riding
     offers: true,         // may offer to place the bet, never places it itself
     aiPatterns: true,     // let the model find patterns instead of fixed rules
-    voice: false,         // dealer voice: recorded roll calls (and the mic button)
-    voiceReplies: false,  // ALSO read free-form replies/remarks with the phone's TTS
-    voiceURI: 'auto',     // which system voice; 'auto' picks the best installed
+    voice: false,         // dealer voice: the recorded roll calls (and the mic button)
     minRepeat: 3,         // how many times a number must show
     gapSeconds: 20,       // minimum quiet between remarks
   },
@@ -1919,45 +1908,20 @@ const Reader = {
 // instant, authentic stickman patter); only typed/spoken ORDERS go to the AI.
 const Voice = {
   on(){ return !!DealerCfg.d.voice; },
-  tts(){ return 'speechSynthesis' in window; },
-  // Best installed voice wins: user's pick, else Premium > Enhanced > any en-US.
-  // (iOS ships premium voices free -- Settings > Accessibility > Spoken Content
-  //  > Voices -- and they appear here once downloaded.)
-  best(){
-    const vs=speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang));
-    if(!vs.length) return null;
-    const uri=DealerCfg.d.voiceURI;
-    if(uri && uri!=='auto'){ const v=vs.find(v=>v.voiceURI===uri); if(v) return v; }
-    return vs.find(v=>/premium/i.test(v.name+v.voiceURI))
-        || vs.find(v=>/enhanced/i.test(v.name+v.voiceURI))
-        || vs.find(v=>v.lang==='en-US') || vs[0];
-  },
   _clips:{},
   call(c){                      // c = {key,text} from stickmanCall
     if(!this.on() || !c) return;
     let a=this._clips[c.key];
     if(a===undefined){
       a=new Audio('voice/'+c.key+'.mp3');
-      a.onerror=()=>{ this._clips[c.key]=null; };   // missing clip -> TTS next time
+      a.onerror=()=>{ this._clips[c.key]=null; };
       this._clips[c.key]=a;
     }
-    if(a){ try{
+    if(!a) return;              // a clip that cannot load stays silent -- the
+    try{                        // call is on screen; there is no second voice.
       if(this._playing){ this._playing.pause(); this._playing.currentTime=0; }
       this._playing=a; a.currentTime=0;
-      a.play().catch(()=>this.speak(c.text, true));
-      return;
-    }catch(e){} }
-    this.speak(c.text);
-  },
-  speak(text, force){
-    if(!this.on() || !this.tts() || !text) return;
-    if(!force && !DealerCfg.d.voiceReplies) return;   // one dealer, one voice
-    try{
-      speechSynthesis.cancel();
-      const u=new SpeechSynthesisUtterance(text);
-      const v=this.best(); if(v) u.voice=v;
-      u.rate=1.02; u.pitch=1.0;
-      speechSynthesis.speak(u);
+      a.play().catch(()=>{});
     }catch(e){}
   },
   // Native (Capacitor) speech recognition, with the browser API as dev fallback.
@@ -2081,32 +2045,13 @@ async function tellDealer(said){
   // a real bet rather than a refused or misheard one.
   const placedBets=(out.bets||[]).filter(b=>b.action==='place'&&b.amount>0);
   if(done.length && placedBets.length){ S.lastOrder=said; S.lastBets=placedBets; }
-  const spoken=out.say || (done.length?`Bet placed: ${done.join(', ')}`:'Nothing changed.');
-  dsay(spoken, '', 6500);
-  Voice.speak(spoken);
+  dsay(out.say || (done.length?`Bet placed: ${done.join(', ')}`:'Nothing changed.'), '', 6500);
   if(done.length) logLine(`<b>Dealer</b> ${out.say||''} <span class="ldetail">${done.join(' · ')}</span>`,'');
   render();
 }
 $('dealerGo').onclick=()=>{const i=$('dealerQ');const v=i.value.trim();if(!v)return;i.value='';tellDealer(v);};
 $('dealerMic').onclick=()=>Voice.toggleMic();
-function paintVoices(){
-  const sel=$('voicePick'); if(!sel || !Voice.tts()) return;
-  const cur=DealerCfg.d.voiceURI||'auto';
-  const vs=speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang));
-  sel.innerHTML='<option value="auto">Auto (best installed)</option>'
-    + vs.map(v=>`<option value="${v.voiceURI}">${v.name}${/premium/i.test(v.name)?'':/enhanced/i.test(v.name)?'':''} (${v.lang})</option>`).join('');
-  sel.value=[...sel.options].some(o=>o.value===cur)?cur:'auto';
-}
-if('speechSynthesis' in window){
-  paintVoices();
-  speechSynthesis.addEventListener('voiceschanged', paintVoices);
-  $('voicePick').addEventListener('change', async e=>{
-    DealerCfg.d.voiceURI=e.target.value; await DealerCfg.save();
-    const wasOn=DealerCfg.d.voice; DealerCfg.d.voice=true;
-    Voice.speak('Coming out! Place your bets.', true);
-    DealerCfg.d.voice=wasOn;
-  });
-}
+
 function paintMic(){ $('dealerMic').hidden = !(Voice.on() && Voice.rec()); }
 AI_READY.then(paintMic);
 $('dealerQ').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('dealerGo').click();}});
@@ -2996,7 +2941,6 @@ async function dealerCall(){
 function showDealerCall(text, obs){
   const bar=$('callBar'); if(!bar) return;
   $('callText').textContent=text;
-  Voice.speak(text);
   const btn=$('callTake');
   if(DealerCfg.d.offers && obs.bets && obs.bets.length){
     const cost=obs.bets.reduce((s,b)=>s+b.amount,0);
