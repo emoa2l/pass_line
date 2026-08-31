@@ -821,8 +821,12 @@ function build(){
   L.appendChild(mk('dc',"Don't come",'1.36%'));
   const F=$('fieldRow');F.innerHTML='';
   const f12=S.field12||2;
+  // The field is a one-roll bet: it is never off, come-out included, which is
+  // why it has no working toggle. Say so on the cell -- the place numbers'
+  // badges otherwise teach players that silent cells are sitting off (#26).
   F.appendChild(mk('field','Field  2 3 4 9 10 11 12',
-    f12===3 ? '2 pays double, 12 triple · 2.78%' : '2 and 12 pay double · 5.56%'));
+    (f12===3 ? '2 pays double, 12 triple · 2.78%' : '2 and 12 pay double · 5.56%')
+    + ' · one roll, always working'));
   const H=$('hardRow');H.innerHTML='';
   [4,6,8,10].forEach(n=>H.appendChild(mk('hard'+n,'Hard '+n,`pays ${HARD_PAY[n]}:1`)));
   const R=$('propRow');R.innerHTML='';
@@ -1294,6 +1298,10 @@ An "auto" line means a win was re-bet by your standing choice. A DRIFT line is a
   the previous shooter's win paid for it a moment earlier.
 
 INVARIANT checked every roll: (from your rack) + (house money pressed) == (on the felt)
+
+WORKING TOGGLE: only place bets have one (off on the come-out by default; long-press
+to toggle). The field, hardways and props are one-roll or always-on bets — they have
+no off state, which is why long-pressing them does nothing.
 
 "YOUR USUAL" BAR (come-out only): a free, local pattern-reader — no AI call. It
 counts how often the same opening bets were placed ("seen N×") and offers to set

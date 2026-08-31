@@ -75,6 +75,10 @@ SESSIONS
 INVARIANT the table checks every roll:
   (from your rack) + (house money pressed) == (money on the felt)
 
+WORKING TOGGLE: only place bets have one (off on the come-out by default; long-press
+to toggle). The field, hardways and props are one-roll or always-on bets -- they have
+no off state, which is why long-pressing them does nothing.
+
 "YOUR USUAL" BAR (come-out only): a free, local pattern-reader -- no AI call. It
 counts how often the same opening bets were placed ("seen N times") and offers to
 set them up. "Stop asking" hides it; it comes back only via Preferences -> Table
