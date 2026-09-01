@@ -390,3 +390,54 @@ class EricLadder(Strategy):
         # $10 come every roll
         if not b.come_new:
             b.come_new = g.wager(10)
+
+
+class InsideRegress(Strategy):
+    """440-inside regression: place 100/120/120/100 across 5/6/8/9 once the
+    point is on; first hit regresses to 220 (50/60), second to 110 (25/30).
+    after='ride' leaves 110 working until the seven-out; after='down' takes
+    everything down on the third hit and sits out the shooter."""
+    LEVELS = ((100, 120), (50, 60), (25, 30))
+
+    def __init__(self, after="ride"):
+        self.after = after
+        self.name = f"440 inside regress ({after})"
+        self._sh = None
+        self.level = 0
+        self.placed = False
+        self.done = False
+        self.armed = False
+
+    def _set_level(self, g):
+        a, bamt = self.LEVELS[self.level]
+        b = g.bets
+        for n_ in (5, 9):
+            cur = b.place.get(n_, 0)
+            if cur > a: g.collect(cur - a); b.place[n_] = a
+            elif cur < a: b.place[n_] = cur + g.wager(a - cur)
+        for n_ in (6, 8):
+            cur = b.place.get(n_, 0)
+            if cur > bamt: g.collect(cur - bamt); b.place[n_] = bamt
+            elif cur < bamt: b.place[n_] = cur + g.wager(bamt - cur)
+
+    def place_bets(self, g):
+        b = g.bets
+        if self._sh != g.shooters:
+            self._sh = g.shooters
+            self.level, self.placed, self.done, self.armed = 0, False, False, False
+        # did the last roll hit one of our working numbers?
+        if self.armed and g.t.total in (5, 6, 8, 9) and b.place.get(g.t.total):
+            if self.level < 2:
+                self.level += 1
+                self._set_level(g)
+            elif self.after == "down":
+                for n_, amt in list(b.place.items()):
+                    g.collect(amt); del b.place[n_]
+                self.done = True
+        self.armed = False
+        if self.done or g.t.is_comeout:
+            return
+        if not self.placed:
+            self._set_level(g)
+            self.placed = True
+        self.armed = True
