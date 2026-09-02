@@ -1105,8 +1105,14 @@ function roll(){
   // immediately -- only the faces are theatre. (#20)
   const pace=+($('speed')||{value:520}).value;
   const still=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Every roll gets a sequence number and kills any older tumble UNCONDITIONALLY.
+  // The old clearInterval lived only in the slow branch, so a tumble that was
+  // still mid-flight when the next roll took the fast path kept running and
+  // settled on the PREVIOUS roll's faces (user report: rolled hard 6, dice
+  // showed a stale hard 4). The real faces always land last now.
+  roll._seq=(roll._seq||0)+1; const seq=roll._seq;
+  clearInterval(roll._tumble);
   if(pace>=900 && !still){
-    clearInterval(roll._tumble);
     let t=0;
     // The scramble must NOT draw from Math.random: in a dev build that is the
     // seeded game RNG, and the animation would eat the dice stream and break
@@ -1114,13 +1120,17 @@ function roll(){
     let vs=(Date.now()^0x9e3779b9)>>>0;
     const vr=()=>{vs=(vs*1664525+1013904223)>>>0;return 1+(vs%6);};
     roll._tumble=setInterval(()=>{
+      if(roll._seq!==seq){clearInterval(roll._tumble);return;}
       drawDie($('d1'),vr());
       drawDie($('d2'),vr());
       if((t+=80)>=720){clearInterval(roll._tumble);
         drawDie($('d1'),d1);drawDie($('d2'),d2);}
     },80);
     $('tot').textContent='…';
-    setTimeout(()=>{$('tot').textContent=n;},760);
+    setTimeout(()=>{if(roll._seq===seq)$('tot').textContent=n;},760);
+    // Authoritative settle: whatever the theatre did, this roll's true faces
+    // are drawn once more after it must have finished.
+    setTimeout(()=>{if(roll._seq===seq){drawDie($('d1'),d1);drawDie($('d2'),d2);}},820);
   } else {
     drawDie($('d1'),d1);drawDie($('d2'),d2);$('tot').textContent=n;
   }
