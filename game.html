@@ -55,6 +55,26 @@ h1,h2,h3,.lab,button{font-family:Oswald,"Arial Narrow",sans-serif}
   text-transform:uppercase;color:var(--bone)}
 .prefs-body{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
 .prefs-body .card{width:100%}
+/* First-play wizard: the prefs overlay pattern, above prefs (60), below boot (99). */
+#wizard{position:fixed;inset:0;z-index:80;background:var(--felt-edge);overflow-y:auto;
+  padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(40px + env(safe-area-inset-bottom,0px))}
+#wizard[hidden]{display:none}
+.wiz-body{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.wiz-step h2{font-family:Oswald,sans-serif;font-size:20px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--brass);margin:8px 0 10px}
+.wiz-step p{margin:0 0 10px;line-height:1.6}
+.wiz-cards{display:flex;gap:10px;margin:8px 0}
+.wiz-card{flex:1;border:2px solid var(--line);border-radius:8px;padding:12px;cursor:pointer;
+  background:rgba(0,0,0,.25);text-align:center}
+.wiz-card.sel{border-color:var(--brass);background:rgba(201,162,39,.13)}
+.wiz-card b{display:block;margin-bottom:5px}
+.wiz-card small{color:var(--muted)}
+.wiz-dots{text-align:center;color:var(--brass);letter-spacing:.4em;font-size:12px}
+.wiz-nav{display:flex;gap:10px;justify-content:center;align-items:center}
+#wizNext{background:var(--brass);color:#1a1200;border:none;padding:10px 26px;border-radius:6px;
+  font-size:12px;font-weight:600;letter-spacing:.1em;cursor:pointer}
+.wiz-voice-row{display:flex;align-items:center;gap:10px;margin:8px 0;
+  border:1px solid var(--line);border-radius:8px;padding:12px;background:rgba(0,0,0,.25)}
 .prefsrow{display:flex;align-items:center;justify-content:space-between;
   background:rgba(4,26,17,.85);border:1px solid var(--line);border-radius:10px;
   padding:13px 15px;font-family:Oswald,sans-serif;font-size:11px;
@@ -490,6 +510,64 @@ footer{max-width:1240px;margin:20px auto 0;color:var(--muted);font-size:12px;lin
     <button class="ghost sm" id="prefsClose">Done</button>
   </div>
   <div class="prefs-body" id="prefsBody"></div>
+</div>
+
+<div id="wizard" hidden role="dialog" aria-modal="true" aria-label="Welcome tour">
+  <div class="wiz-body">
+    <section class="wiz-step" data-step="0">
+      <h2>Welcome to Pass Line</h2>
+      <p>A play-money craps practice table. No real wagering, no prizes, no chips for
+      sale &mdash; just the real rules and honest math.</p>
+      <p><b>Tap</b> a bet to put money on it. Place bets sit <b>off</b> on the come-out
+      &mdash; <b>long-press</b> a number to toggle it working. Then <b>Roll dice</b>.</p>
+    </section>
+    <section class="wiz-step" data-step="1" hidden>
+      <h2>Pick your table</h2>
+      <p>Two ways to see the same game &mdash; switch anytime in Preferences.</p>
+      <div class="wiz-cards">
+        <div class="wiz-card" data-wiz-view="list" role="button" tabindex="0">
+          <b>List</b><small>Every bet as a clean tap-friendly list. Best on a phone.</small>
+        </div>
+        <div class="wiz-card" data-wiz-view="felt" role="button" tabindex="0">
+          <b>Half table</b><small>Mimics the real felt. Click the pass line again to back it with odds.</small>
+        </div>
+      </div>
+    </section>
+    <section class="wiz-step" data-step="2" hidden>
+      <h2>The dealer&rsquo;s voice</h2>
+      <p>Your dealer calls every roll like a Vegas stickman &mdash; recorded clips that ship
+      inside the app. Free, offline, no AI involved.</p>
+      <label class="wiz-voice-row"><input type="checkbox" id="wizVoice">
+        Call the rolls out loud</label>
+      <p><small>Flip it and he&rsquo;ll say hello.</small></p>
+    </section>
+    <section class="wiz-step" data-step="3" hidden>
+      <h2>About the AI features</h2>
+      <p>The AI coach and the spoken-bet dealer are part of <b>Advanced</b>, a one-time
+      unlock in the app stores. Everything lives under AI setup in Preferences.</p>
+      <p>They run on <b>your own AI account</b>. An API key is a password-like code you
+      create on a provider&rsquo;s website that lets apps use their AI and bills you
+      directly. OpenRouter is the default &mdash; one key, every model.</p>
+      <p>It&rsquo;s pay-per-use &mdash; typically well under a cent per coach answer or dealer
+      remark. No subscription, and the developer receives nothing.</p>
+      <p>Nothing is ever sent anywhere until you add a key <b>and</b> tick the consent
+      disclosure. Until then &mdash; and forever, if you never do &mdash; the whole game works
+      offline: table, money tracking, shooters, sessions, statistics.</p>
+    </section>
+    <section class="wiz-step" data-step="4" hidden>
+      <h2>That&rsquo;s the tour</h2>
+      <p>Everything else lives behind the <b>&#9881;</b> button: layout, pace, odds limit,
+      Field-12 rule, dealer behaviour, voice, sessions, and AI setup.</p>
+      <p>Want this tour again? Preferences &rarr; <b>Show the welcome tour</b>.</p>
+      <p>Good luck &mdash; and remember the math panel never lies.</p>
+    </section>
+    <div class="wiz-dots" aria-hidden="true"></div>
+    <div class="wiz-nav">
+      <button class="ghost sm" id="wizBack" type="button">Back</button>
+      <button id="wizNext" type="button">Next</button>
+      <button class="ghost sm" id="wizSkip" type="button">Skip tour</button>
+    </div>
+  </div>
 </div>
 
 <div class="wrap">
@@ -1418,6 +1496,11 @@ An "auto" line means a win was re-bet by your standing choice. A DRIFT line is a
 - Shooter boundaries are strict: pools of returned money die with the shooter.
   A bet placed after a seven-out is the NEW shooter's fresh rack money, even if
   the previous shooter's win paid for it a moment earlier.
+
+WELCOME TOUR: a one-time, always-skippable five-step intro (basics, layout choice,
+dealer voice, what the AI features are and cost, where Preferences lives). It changes
+nothing except the settings the player picks, sends nothing anywhere, and can be
+re-run from Preferences \u2192 Show the welcome tour.
 
 BY-SHOOTER TABLE, PRESS column: the house money that was riding when that
 shooter's seven-out fell — what the seven swept, not what remained after (which
@@ -3109,6 +3192,10 @@ if(isDevBuild() && !DBG.on) DBG.start();
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 
+// Snapshot BEFORE the layout IIFE below stamps craps.view.v2 on this very load:
+// its absence is the "this device never ran the app" signal the wizard needs.
+const WIZ_RETURNING=!!(function(){try{return localStorage.getItem('craps.view.v2')}catch(e){return null}})();
+
 // ---- Layout switch. Same bet elements, re-arranged -- all wagering logic is shared. ----
 (function(){
   const sel=document.getElementById('viewmode'), lay=document.getElementById('layout');
@@ -3141,7 +3228,8 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
   // The loading screen carries the identity so the play surface does not have to.
   const boot=$('boot');
   const hide=()=>{ if(!boot) return; boot.classList.add('gone');
-    setTimeout(()=>boot.remove(), 500); };
+    setTimeout(()=>boot.remove(), 500);
+    window.__wizardMaybeShow?.(); };
   // Three seconds on screen (decided), then fade. The backstop guarantees the
   // player is never trapped behind it if the load event misfires.
   window.addEventListener('load', ()=>setTimeout(hide, 3000));
@@ -3202,10 +3290,73 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
     paintField();
     flash(S.field12===3?'Field 12 pays triple — edge drops to 2.78%':'Field 12 pays double — edge 5.56%'); };
   paintField();
+  const wrow=document.createElement('label');
+  wrow.className='prefsrow';
+  wrow.innerHTML=`Show the welcome tour
+    <button class="ghost sm" id="wizReplay" type="button">Show</button>`;
+  body.appendChild(wrow);
+  document.getElementById('wizReplay').onclick=()=>{
+    $('prefs').hidden=true; window.__wizardShow && window.__wizardShow(0); };
+
   $('prefsBtn').onclick=()=>{ $('prefs').hidden=false; };
   $('prefsClose').onclick=()=>{ $('prefs').hidden=true; };
   document.addEventListener('keydown',e=>{
-    if(e.key==='Escape' && !$('prefs').hidden) $('prefs').hidden=true; });
+    if(e.key==='Escape'){
+      const w=$('wizard');
+      if(w && !w.hidden){ window.__wizardDismiss?.(); return; }
+      if(!$('prefs').hidden) $('prefs').hidden=true; } });
+})();
+
+// ---- First-play wizard (docs/specs/first-play-wizard). Skippable five-step
+// tour, shown once per install; every setting it touches goes through the
+// existing control so there is exactly one persistence path. A broken wizard
+// hides itself and marks itself seen: it can cost one tour, never the game.
+(function(){
+  const wiz=$('wizard'); if(!wiz) return;
+  const steps=[...wiz.querySelectorAll('.wiz-step')];
+  const dots=wiz.querySelector('.wiz-dots');
+  let at=0;
+  function paint(){
+    steps.forEach((s,i)=>s.hidden=(i!==at));
+    dots.textContent=steps.map((_,i)=>i===at?'\u25cf':'\u25cb').join(' ');
+    $('wizBack').style.visibility = at===0?'hidden':'visible';
+    $('wizNext').textContent = at===steps.length-1?'Finish':'Next';
+    $('wizSkip').hidden = (at===steps.length-1);
+  }
+  function syncFromLive(){
+    const vm=document.getElementById('viewmode');
+    wiz.querySelectorAll('[data-wiz-view]').forEach(c=>
+      c.classList.toggle('sel', !!vm && vm.value===c.dataset.wizView));
+    const live=document.querySelector('[data-d="voice"]');
+    const t=$('wizVoice'); if(t && live) t.checked=live.checked;
+  }
+  function show(step){ at=step||0; syncFromLive(); paint(); wiz.hidden=false;
+    try{ $('wizNext').focus(); }catch(e){} }
+  function dismiss(){ wiz.hidden=true;
+    try{ SecureStore.set('craps.wizard.seen','1'); }catch(e){} }
+  $('wizNext').onclick=()=>{ if(at>=steps.length-1){ dismiss(); return; } at++; paint(); };
+  $('wizBack').onclick=()=>{ if(at>0){ at--; paint(); } };
+  $('wizSkip').onclick=dismiss;
+  wiz.querySelectorAll('[data-wiz-view]').forEach(c=>{
+    const pick=()=>{ const vm=document.getElementById('viewmode');
+      if(vm){ vm.value=c.dataset.wizView; vm.dispatchEvent(new Event('change',{bubbles:true})); }
+      syncFromLive(); };
+    c.onclick=pick;
+    c.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); pick(); } };
+  });
+  const t=$('wizVoice');
+  if(t) t.onchange=()=>{ const live=document.querySelector('[data-d="voice"]');
+    if(live && live.checked!==t.checked) live.click();   // real click -> real handler, saves + says hello
+    syncFromLive(); };
+  window.__wizardShow=show;
+  window.__wizardDismiss=dismiss;
+  window.__wizardMaybeShow=async function(){
+    try{
+      if(WIZ_RETURNING) return;
+      if((await SecureStore.get('craps.wizard.seen'))==='1') return;
+      show(0);
+    }catch(e){ try{ dismiss(); }catch(_){} }
+  };
 })();
 
 
