@@ -441,3 +441,81 @@ class InsideRegress(Strategy):
             self._set_level(g)
             self.placed = True
         self.armed = True
+
+
+class DarkPressLadder(Strategy):
+    """Eric's dark-side press ladder: $25 don't pass every come-out. On the
+    point: place two inside numbers dodging the point (6&8; 6&9 if 8 is the
+    point; 5&8 if 6 is the point), $6 units on 6/8 and $5 on 5/9. Hits advance
+    one shared per-shooter script: pull, pull, press, pull, press, pull,
+    spread, pull, spread, pull, then press the hit number every hit.
+    Pull = collect the win, bet stays. Press = win onto that number in clean
+    units (change pocketed) but the bet NEVER exceeds $21 -- 6/8 cap at $18,
+    5/9 at $20 -- and after THREE presses on a number (or hitting the cap) it collects forever. Spread = the win
+    buys the next uncovered inside number (5,9,6,8 priority, never the point)."""
+    name = "Dark press ladder (25 DP + press/pull, cap 21)"
+
+    SCRIPT = ["pull","pull","press","pull","press","pull","spread","pull","spread","pull"]
+    CAP = 21
+
+    def __init__(self):
+        self._sh = None; self.hits = 0; self.placed = False; self.armed = False
+        self._had = {}; self._pressed = {}
+
+    @staticmethod
+    def _unit(n): return 6 if n in (6, 8) else 5
+
+    def _pairs(self, pt):
+        if pt == 8: return (6, 9)
+        if pt == 6: return (5, 8)
+        return (6, 8)
+
+    def _press(self, g, n, win):
+        # Three presses on a number retires it to collect-only, as does the cap.
+        if self._pressed.get(n, 0) >= 3:
+            return
+        b = g.bets; u = self._unit(n)
+        room = ((self.CAP - b.place[n]) // u) * u      # stay at or under $21
+        add = min((win // u) * u, max(0, room))
+        if add:
+            b.place[n] += g.wager(add)
+            self._pressed[n] = self._pressed.get(n, 0) + 1
+
+    def place_bets(self, g):
+        from craps_engine import PLACE_PAY, _pay
+        b = g.bets
+        if self._sh != g.shooters:
+            self._sh = g.shooters
+            self.hits = 0; self.placed = False; self.armed = False
+            self._had = {}; self._pressed = {}
+
+        # ---- detect last roll's place hit (bet stays up; win hit the bankroll) ----
+        n = g.t.total
+        if self.armed and n in self._had and n in b.place:
+            self.hits += 1
+            win = _pay(self._had[n], PLACE_PAY[n])
+            act = self.SCRIPT[self.hits-1] if self.hits <= len(self.SCRIPT) else "press"
+            if act == "press":
+                self._press(g, n, win)
+            elif act == "spread":
+                pt = g.t.point
+                for cand in (5, 9, 6, 8):
+                    if cand != pt and cand not in b.place:
+                        u = self._unit(cand)
+                        amt = min((win // u) * u, ((self.CAP // u) * u))
+                        if amt: b.place[cand] = g.wager(amt)
+                        break
+        self.armed = False
+
+        if g.t.is_comeout:
+            if not b.dont_pass:
+                b.dont_pass = g.wager(25)
+            self._had = dict(b.place)
+            return
+        if not self.placed:
+            self.placed = True
+            for n_ in self._pairs(g.t.point):
+                if n_ not in b.place:
+                    b.place[n_] = g.wager(self._unit(n_))
+        self._had = dict(b.place)
+        self.armed = True
