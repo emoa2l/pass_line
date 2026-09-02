@@ -1052,6 +1052,11 @@ function roll(){
   const eq0=S.bank+risk();
   // Snapshot the bets as they stood BEFORE this roll resolved: after resolution a
   // winning bet is gone, and the coach cannot tell a win from an empty table.
+  // What the player had riding BEFORE this roll resolves: if this roll is the
+  // seven-out, these are the numbers the seven swept — endShooter reads them,
+  // because by the time it runs the retirements have already zeroed the live
+  // counters (the all-zero PRESS column bug).
+  S._preRoll={rack:S.sFromRack, press:S.sFromPress};
   const before={point:was,pass:b.pass,passOdds:b.passOdds,dont:b.dont,dontOdds:b.dontOdds,
     come:{...b.come},comeNew:b.comeNew,comeOdds:{...b.comeOdds},dc:{...b.dc},dcNew:b.dcNew,
     place:{...b.place},field:b.field,hard:{...b.hard},prop:{...b.prop}};
@@ -1413,6 +1418,10 @@ An "auto" line means a win was re-bet by your standing choice. A DRIFT line is a
 - Shooter boundaries are strict: pools of returned money die with the shooter.
   A bet placed after a seven-out is the NEW shooter's fresh rack money, even if
   the previous shooter's win paid for it a moment earlier.
+
+BY-SHOOTER TABLE, PRESS column: the house money that was riding when that
+shooter's seven-out fell — what the seven swept, not what remained after (which
+is always zero). The live row shows house money riding right now.
 
 INVARIANT checked every roll: (from your rack) + (house money pressed) == (on the felt)
 
@@ -2640,13 +2649,15 @@ function endShooter(){
   const rec={
     no:S.shooterNo, rolls:S.shooterRolls, points:S.shooterPoints,
     net: eq - S.shooterStartEq, endEquity: eq,
-    rack:rackNet(), exposed:S.sFromRack, press:S.sFromPress
+    rack:rackNet(),
+    exposed:(S._preRoll||{}).rack ?? S.sFromRack,
+    press:(S._preRoll||{}).press ?? S.sFromPress
   };
   S.shooters.push(rec);
   logLine(`Shooter ${rec.no} sevened out after ${rec.rolls} roll${rec.rolls===1?'':'s'}, `
         + `${rec.points} point${rec.points===1?'':'s'} made. `
         + `Your result: ${rec.net>=0?'+':'−'}$${Math.abs(rec.net)}`
-        + ` (put up $${rec.rack} of your own${rec.press?`, plus $${rec.press} of house money`:''})`, 'shooter');
+        + ` (put up $${rec.rack} of your own${rec.press?`, the seven took $${rec.press} of house money`:''})`, 'shooter');
   S.shooterNo++; S.shooterRolls=0; S.shooterPoints=0; S.shooterStartEq=eq; Reader.reset();
   S.sFromRack=0; S.sFromPress=0; S.sOutRack=0; S.poolStake=0; S.poolWin=0; S.stakeLeft=S.stake;
   renderShooters();

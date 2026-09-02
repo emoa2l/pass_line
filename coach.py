@@ -72,6 +72,10 @@ SESSIONS
   A bet placed after a seven-out is the NEW shooter's fresh rack money, even if
   the previous shooter's win paid for it a moment earlier.
 
+BY-SHOOTER TABLE, PRESS column: the house money that was riding when that
+shooter's seven-out fell -- what the seven swept, not what remained after (which
+is always zero). The live row shows house money riding right now.
+
 INVARIANT the table checks every roll:
   (from your rack) + (house money pressed) == (money on the felt)
 
