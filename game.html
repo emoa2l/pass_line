@@ -2008,16 +2008,35 @@ const Reader = {
 
 // ---- Voice: the dealer out loud. Roll calls are generated locally (free,
 // instant, authentic stickman patter); only typed/spoken ORDERS go to the AI.
+// Which recorded takes exist for each call (generated from voice/ at pack time).
+// A real stickman never says the eight the same way twice; neither does ours.
+const VOICE_VARIANTS={"co11":["co11","co11_1"],"co12":["co12","co12_1"],"co2":["co2","co2_1"],"co3":["co3","co3_1"],"co7":["co7","co7_1"],"num10e":["num10e","num10e_1"],"num10h":["num10h","num10h_1"],"num11e":["num11e","num11e_1","num11e_2"],"num12h":["num12h","num12h_1","num12h_2"],"num2h":["num2h","num2h_1","num2h_2"],"num3e":["num3e","num3e_1","num3e_2"],"num4e":["num4e","num4e_1","num4e_2"],"num4h":["num4h","num4h_1"],"num5e":["num5e","num5e_1","num5e_2"],"num6e":["num6e","num6e_1","num6e_2"],"num6h":["num6h","num6h_1"],"num8e":["num8e","num8e_1","num8e_2"],"num8h":["num8h","num8h_1"],"num9e":["num9e","num9e_1","num9e_2"],"out7":["out7","out7_1","out7_2"],"point10e":["point10e","point10e_1"],"point10h":["point10h","point10h_1"],"point4e":["point4e","point4e_1"],"point4h":["point4h","point4h_1"],"point5e":["point5e","point5e_1"],"point6e":["point6e","point6e_1"],"point6h":["point6h","point6h_1"],"point8e":["point8e","point8e_1"],"point8h":["point8h","point8h_1"],"point9e":["point9e","point9e_1"],"win10e":["win10e","win10e_1"],"win10h":["win10h","win10h_1"],"win4e":["win4e","win4e_1"],"win4h":["win4h","win4h_1"],"win5e":["win5e","win5e_1"],"win6e":["win6e","win6e_1"],"win6h":["win6h","win6h_1"],"win8e":["win8e","win8e_1"],"win8h":["win8h","win8h_1"],"win9e":["win9e","win9e_1"]};
+
 const Voice = {
   on(){ return !!DealerCfg.d.voice; },
   _clips:{},
+  // Private LCG for variety: cosmetic randomness must never consume the seeded
+  // game PRNG (the tumble-animation lesson) -- dice replay stays exact.
+  _vr:0x9e3779b9,
+  _rand(){ this._vr=(this._vr*1103515245+12345)&0x7fffffff; return this._vr/0x7fffffff; },
+  _last:{},
+  _pick(key){
+    const names=VOICE_VARIANTS[key];
+    if(!names || !names.length) return key;
+    if(names.length===1) return names[0];
+    let n=names[Math.floor(this._rand()*names.length)];
+    if(n===this._last[key]) n=names[(names.indexOf(n)+1)%names.length];
+    this._last[key]=n;
+    return n;
+  },
   call(c){                      // c = {key,text} from stickmanCall
     if(!this.on() || !c) return;
-    let a=this._clips[c.key];
+    const name=this._pick(c.key);
+    let a=this._clips[name];
     if(a===undefined){
-      a=new Audio('voice/'+c.key+'.mp3');
-      a.onerror=()=>{ this._clips[c.key]=null; };
-      this._clips[c.key]=a;
+      a=new Audio('voice/'+name+'.mp3');
+      a.onerror=()=>{ this._clips[name]=null; };
+      this._clips[name]=a;
     }
     if(!a) return;              // a clip that cannot load stays silent -- the
     try{                        // call is on screen; there is no second voice.
